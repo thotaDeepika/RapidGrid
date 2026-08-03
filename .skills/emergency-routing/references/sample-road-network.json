@@ -1,0 +1,23 @@
+{
+  "description": "Minimal sample road network for local dev/testing of the Route Optimization Agent. Coordinates are illustrative (Bengaluru-area), not survey-accurate.",
+  "nodes": [
+    {"id": "N1", "lat": 12.9716, "lng": 77.5946, "name": "Incident Site"},
+    {"id": "N2", "lat": 12.9758, "lng": 77.6011, "name": "Junction A"},
+    {"id": "N3", "lat": 12.9800, "lng": 77.6090, "name": "Junction B"},
+    {"id": "N4", "lat": 12.9852, "lng": 77.6150, "name": "Junction C"},
+    {"id": "N5", "lat": 12.9900, "lng": 77.6200, "name": "Hospital Gate"}
+  ],
+  "edges": [
+    {"id": "E1", "from": "N1", "to": "N2", "base_travel_time_s": 180, "congestion_multiplier": 1.4, "incident_multiplier": 1.0, "weather_multiplier": 1.0, "blocked": false},
+    {"id": "E2", "from": "N2", "to": "N4", "base_travel_time_s": 240, "congestion_multiplier": 1.8, "incident_multiplier": 3.2, "weather_multiplier": 1.0, "blocked": false},
+    {"id": "E3", "from": "N2", "to": "N3", "base_travel_time_s": 150, "congestion_multiplier": 1.1, "incident_multiplier": 1.0, "weather_multiplier": 1.0, "blocked": false},
+    {"id": "E4", "from": "N3", "to": "N4", "base_travel_time_s": 160, "congestion_multiplier": 1.2, "incident_multiplier": 1.0, "weather_multiplier": 1.0, "blocked": false},
+    {"id": "E5", "from": "N4", "to": "N5", "base_travel_time_s": 120, "congestion_multiplier": 1.0, "incident_multiplier": 1.0, "weather_multiplier": 1.0, "blocked": false},
+    {"id": "E6", "from": "N1", "to": "N3", "base_travel_time_s": 300, "congestion_multiplier": 1.0, "incident_multiplier": 1.0, "weather_multiplier": 1.0, "blocked": true}
+  ],
+  "notes": [
+    "E1 -> E2 -> E5 is the naive shortest-distance path but has a high incident_multiplier on E2 (simulates an accident).",
+    "E1 -> E3 -> E4 -> E5 is longer in hops but should win on weighted cost — good primary test case for 'shortest by cost, not by hops'.",
+    "E6 is marked blocked: true — use this to test the 'never recommend a blocked segment' requirement and the 'only route is blocked' edge case if you remove E1->E2 as well."
+  ]
+}
