@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Phone, MessageSquare, Radio, MapPin, Clock, CheckCircle2, Truck, PlusSquare, ShieldAlert } from 'lucide-react';
+import { Send, Phone, MessageSquare, Radio, Truck, PlusSquare } from 'lucide-react';
 
 export default function LiveEmergencyChat({ 
   incidentId, 
@@ -93,7 +93,6 @@ export default function LiveEmergencyChat({
     if (!customText) setText('');
   };
 
-  // Filter messages by selected target channel
   const filteredMessages = messages.filter(m => {
     if (!m.target_channel) return true;
     if (activeChannel === 'driver') {
@@ -104,112 +103,111 @@ export default function LiveEmergencyChat({
     return m.sender_role === 'hospital' || m.target_channel === 'hospital';
   });
 
-  const primaryLabel = vehicleRequired === 'Fire Engine' ? 'FIRE DRIVER CHAT' : vehicleRequired === 'Police Cruiser' ? 'POLICE CHAT' : vehicleRequired === 'Disaster Rescue' ? 'DISASTER CHAT' : 'PARAMEDIC DRIVER CHAT';
+  const primaryLabel = vehicleRequired === 'Fire Engine' ? 'FIRE DRIVER CHAT' : vehicleRequired === 'Police Cruiser' ? 'POLICE CHAT' : vehicleRequired === 'Disaster Rescue' ? 'DISASTER CHAT' : 'PARAMEDIC CHAT';
   const showHospitalTab = vehicleRequired === 'Ambulance' || includeAmbulanceBackup;
 
   const currentTargetPhone = targetPhone || (activeChannel === 'hospital' ? hospitalPhone : driverPhone);
   const currentTargetName = activeChannel === 'hospital' ? hospitalName : `${vehicleRequired} Driver Unit`;
 
   return (
-    <div className="bg-surface-container rounded-2xl border border-outline-variant/30 flex flex-col h-[410px] shadow-2xl overflow-hidden">
+    <div className="bg-white rounded-3xl border border-[#e2e8f0] flex flex-col h-[400px] shadow-elevation-md overflow-hidden font-body">
       {/* Dynamic Unit Switcher Tabs */}
-      <div className="bg-surface-container-high p-2 border-b border-outline-variant/30 flex justify-between items-center gap-1.5 overflow-x-auto">
-        <div className="flex gap-1.5 flex-1">
-          {/* Primary Dispatched Unit Chat Tab */}
+      <div className="bg-[#f6f8fb] p-2.5 border-b border-[#e2e8f0] flex justify-between items-center gap-2 overflow-x-auto">
+        <div className="flex gap-2 flex-1">
           <button
             onClick={() => setActiveChannel('driver')}
-            className={`py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 border flex-1 ${
+            className={`py-2 px-3.5 rounded-2xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 border flex-1 ${
               activeChannel === 'driver'
-                ? 'bg-[#FFB900]/20 text-[#FFB900] border-[#FFB900]/50 shadow-md'
-                : 'bg-surface-container-low text-on-surface-variant border-transparent hover:bg-surface-container'
+                ? 'bg-[#5f4bb6] text-white border-[#5f4bb6] shadow-sm'
+                : 'bg-white text-[#5a6860] border-[#e2e8f0] hover:border-[#86a5d9]'
             }`}
           >
             <Truck size={14} />
             <span className="truncate">{primaryLabel}</span>
           </button>
 
-          {/* Secondary Paramedic Ambulance Backup Tab (If Backup Requested) */}
           {includeAmbulanceBackup && vehicleRequired !== 'Ambulance' && (
             <button
               onClick={() => setActiveChannel('ambulance_backup')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 border flex-1 ${
+              className={`py-2 px-3.5 rounded-2xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 border flex-1 ${
                 activeChannel === 'ambulance_backup'
-                  ? 'bg-tertiary/20 text-tertiary border-tertiary/50 shadow-md'
-                  : 'bg-surface-container-low text-on-surface-variant border-transparent hover:bg-surface-container'
+                  ? 'bg-[#5f4bb6] text-white border-[#5f4bb6] shadow-sm'
+                  : 'bg-white text-[#5a6860] border-[#e2e8f0] hover:border-[#86a5d9]'
               }`}
             >
               <Truck size={14} />
-              <span className="truncate">AMBULANCE BACKUP CHAT</span>
+              <span className="truncate">AMBULANCE BACKUP</span>
             </button>
           )}
 
-          {/* Hospital ER Desk Tab (If Medical Ambulance involved) */}
           {showHospitalTab && (
             <button
               onClick={() => setActiveChannel('hospital')}
-              className={`py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all flex items-center justify-center gap-1.5 border flex-1 ${
+              className={`py-2 px-3.5 rounded-2xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 border flex-1 ${
                 activeChannel === 'hospital'
-                  ? 'bg-[#B084FF]/20 text-[#B084FF] border-[#B084FF]/50 shadow-md'
-                  : 'bg-surface-container-low text-on-surface-variant border-transparent hover:bg-surface-container'
+                  ? 'bg-[#5f4bb6] text-white border-[#5f4bb6] shadow-sm'
+                  : 'bg-white text-[#5a6860] border-[#e2e8f0] hover:border-[#86a5d9]'
               }`}
             >
               <PlusSquare size={14} />
-              <span className="truncate">HOSPITAL ER DESK CHAT</span>
+              <span className="truncate">HOSPITAL ER CHAT</span>
             </button>
           )}
         </div>
 
         {/* Telephony Action Buttons */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <a
             href={`tel:${currentTargetPhone}`}
-            className="px-2 py-1.5 bg-tertiary/20 text-tertiary hover:bg-tertiary/30 rounded-xl transition-all flex items-center gap-1 text-xs font-bold"
+            className="px-3 py-1.5 bg-[#f0ecfd] text-[#5f4bb6] hover:bg-[#5f4bb6] hover:text-white rounded-xl transition-all flex items-center gap-1 text-xs font-bold font-mono border border-[#86a5d9]/30"
             title={`Call ${currentTargetName}`}
           >
-            <Phone size={14} />
+            <Phone size={13} />
             <span className="hidden sm:inline">Call</span>
           </a>
           <a
             href={`sms:${currentTargetPhone}?body=Emergency%20Update%20from%20${senderRole}`}
-            className="px-2 py-1.5 bg-secondary/20 text-secondary hover:bg-secondary/30 rounded-xl transition-all flex items-center gap-1 text-xs font-bold"
+            className="px-3 py-1.5 bg-[#f0f4f9] text-[#202a25] hover:bg-[#e2e8f0] rounded-xl transition-all flex items-center gap-1 text-xs font-bold font-mono border border-[#e2e8f0]"
             title={`SMS ${currentTargetName}`}
           >
-            <MessageSquare size={14} />
+            <MessageSquare size={13} />
             <span className="hidden sm:inline">SMS</span>
           </a>
         </div>
       </div>
 
       {/* Active Channel Indicator */}
-      <div className="bg-surface-container-low px-3 py-1 border-b border-outline-variant/20 flex justify-between items-center text-[10px] font-mono">
-        <span className="text-on-surface-variant">
-          Active Socket: <strong className="text-on-surface">{currentTargetName}</strong>
+      <div className="bg-[#f6f8fb]/80 px-4 py-1.5 border-b border-[#e2e8f0] flex justify-between items-center text-[11px] font-mono">
+        <span className="text-[#5a6860]">
+          Active Channel: <strong className="text-[#202a25] font-bold">{currentTargetName}</strong>
         </span>
-        <span className="text-tertiary flex items-center gap-1 font-bold">
-          <span className="w-1.5 h-1.5 bg-tertiary rounded-full animate-ping"></span>
-          REALTIME SYNC
+        <span className="text-[#008b8c] flex items-center gap-1.5 font-bold">
+          <span className="w-2 h-2 bg-[#00b8b9] rounded-full animate-pulse"></span>
+          WEBSOCKET LIVE STREAM
         </span>
       </div>
 
       {/* Messages Stream */}
-      <div ref={chatStreamRef} className="flex-1 p-3 overflow-y-auto space-y-2 text-xs bg-surface-container-lowest/40">
+      <div ref={chatStreamRef} className="flex-1 p-4 overflow-y-auto space-y-3 text-xs bg-[#fafcff]">
         {filteredMessages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-on-surface-variant/40 space-y-1">
-            <Radio size={28} className="opacity-30" />
-            <p className="font-semibold text-xs">No messages in {currentTargetName} channel.</p>
-            <p className="text-[10px]">Type below to send a direct message.</p>
+          <div className="h-full flex flex-col items-center justify-center text-[#88968f] space-y-1.5">
+            <Radio size={28} className="opacity-40 text-[#5f4bb6]" />
+            <p className="font-display font-bold text-xs text-[#202a25]">No messages in {currentTargetName} channel.</p>
+            <p className="text-[11px] text-[#5a6860]">Type below to stream direct messages.</p>
           </div>
         ) : (
           filteredMessages.map((m, idx) => {
             const isMe = m.sender_role === senderRole;
             return (
               <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div className="flex items-center gap-1 mb-0.5">
-                  <span className="text-[10px] font-mono text-on-surface-variant/70 font-bold">{m.sender_name} ({m.sender_role})</span>
-                  <span className="text-[9px] text-on-surface-variant/50">{m.timestamp}</span>
+                <div className="flex items-center gap-1.5 mb-1 font-mono text-[10px]">
+                  <span className="text-[#5a6860] font-bold">{m.sender_name} ({m.sender_role})</span>
+                  <span className="text-[#88968f]">{m.timestamp}</span>
                 </div>
-                <div className={`p-2.5 rounded-2xl max-w-[80%] border shadow-sm ${
-                  isMe ? 'bg-primary text-on-primary border-primary/50' : 'bg-surface-container-high text-on-surface border-outline-variant/30'
+                <div className={`p-3 rounded-2xl max-w-[80%] shadow-sm text-xs ${
+                  isMe 
+                    ? 'bg-[#5f4bb6] text-white font-medium rounded-tr-none' 
+                    : 'bg-white text-[#202a25] border border-[#e2e8f0] rounded-tl-none'
                 }`}>
                   {m.message}
                 </div>
@@ -220,18 +218,18 @@ export default function LiveEmergencyChat({
       </div>
 
       {/* Input Box */}
-      <div className="p-2.5 bg-surface-container-high border-t border-outline-variant/30 flex gap-2">
+      <div className="p-3 bg-white border-t border-[#e2e8f0] flex gap-2">
         <input
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={`Type direct message to ${currentTargetName}...`}
-          className="flex-1 bg-surface-container-low border border-outline-variant/30 text-on-surface px-3 py-2 rounded-xl text-xs focus:outline-none focus:border-primary"
+          placeholder={`Type message to ${currentTargetName}...`}
+          className="flex-1 bg-[#f6f8fb] border border-[#e2e8f0] text-[#202a25] px-4 py-2.5 rounded-2xl text-xs focus:outline-none focus:border-[#5f4bb6]"
         />
         <button
           onClick={() => handleSend()}
-          className="bg-primary text-on-primary p-2.5 rounded-xl hover:bg-primary/90 transition-all flex items-center justify-center shadow-md"
+          className="bg-[#5f4bb6] hover:bg-[#4c3a9e] text-white p-2.5 rounded-2xl transition-all flex items-center justify-center shadow-sm active:scale-95"
         >
           <Send size={16} />
         </button>
