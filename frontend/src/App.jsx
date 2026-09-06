@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import SharedShell from './components/SharedShell';
+import LandingPage from './views/LandingPage';
 import Login from './views/Login';
 import CitizenDashboard from './views/CitizenDashboard';
 import DispatcherDashboard from './views/DispatcherDashboard';
@@ -21,25 +22,13 @@ function ProtectedRoute({ allowedRoles, children }) {
   return children;
 }
 
-function RoleRedirect() {
-  const { role } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (role) {
-      navigate(`/${role}`, { replace: true });
-    }
-  }, [role, navigate]);
-
-  return <Login />;
-}
-
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Login />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
           
           <Route path="/citizen" element={
             <ProtectedRoute allowedRoles={['citizen']}>
