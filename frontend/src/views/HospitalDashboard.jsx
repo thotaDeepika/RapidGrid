@@ -1,190 +1,243 @@
-import LiveEmergencyChat from '../components/LiveEmergencyChat';
+/**
+ * Emergency department terminal.
+ *
+ * Answers one question for the charge nurse: what is arriving, how bad, and
+ * how long have we got. Everything else is secondary.
+ *
+ * The capacity toggle is a real control - closing ICU beds removes this
+ * facility from the routing engine's candidate list for new calls - so it is
+ * treated as a consequential action, not a decorative switch.
+ */
+
 import React, { useState, useEffect } from 'react';
+import { Check, BedDouble } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { PlusSquare, Activity, User, CheckCircle2, Stethoscope, Droplet } from 'lucide-react';
+import LiveEmergencyChat from '../components/LiveEmergencyChat';
+import {
+  Panel,
+  PanelHead,
+  Button,
+  Stat,
+  SeverityTag,
+  StatusTag,
+  Provenance,
+  ConnectionState,
+  Empty,
+  severityBand,
+} from '../components/ui';
 
 export default function HospitalDashboard() {
   const { hospitalInfo } = useAuth();
-  const [incomingCases, setIncomingCases] = useState([]);
-  const [icuAvailable, setIcuAvailable] = useState(true);
-  const [acknowledgedCases, setAcknowledgedCases] = useState({});
-
-  const toggleIcu = async () => {
-    const newVal = !icuAvailable;
-    setIcuAvailable(newVal);
-    try {
-      await fetch('/api/hospital/mock-hospital-1/resources', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ icu_available: newVal })
-      }).catch(() => {});
-    } catch (err) {}
-  };
+  const [incoming, setIncoming] = useState([]);
+  const [icuOpen, setIcuOpen] = useState(true);
+  const [acknowledged, setAcknowledged] = useState({});
+  const [openThread, setOpenThread] = useState(null);
+  const [conn, setConn] = useState('ok');
 
   useEffect(() => {
-    const fetchIncidents = async () => {
+    let cancelled = false;
+    const load = async () => {
       try {
-        const res = await fetch(`/api/hospital/${hospitalInfo?.id || 'all'}/incoming?name=${encodeURIComponent(hospitalInfo?.name || '')}`);
-        if (!res.ok) return;
+        const id = hospitalInfo?.id || 'all';
+        const name = encodeURIComponent(hospitalInfo?.name ?? '');
+        const res = await fetch(`/api/hospital/${id}/incoming?name=${name}`);
+        if (!res.ok) throw new Error();
         const data = await res.json();
-        setIncomingCases(data.incoming || []);
-      } catch (err) {}
+        if (!cancelled) {
+          setIncoming(data.incoming ?? []);
+          setConn('ok');
+        }
+      } catch {
+        if (!cancelled) setConn('down');
+      }
     };
-
-    fetchIncidents();
-    const interval = setInterval(fetchIncidents, 2000);
-    return () => clearInterval(interval);
+    load();
+    const timer = setInterval(load, 2500);
+    return () => { cancelled = true; clearInterval(timer); };
   }, [hospitalInfo]);
 
-  const handleAcknowledge = (incidentId) => {
-    setAcknowledgedCases(prev => ({ ...prev, [incidentId]: true }));
+  const setCapacity = async (open) => {
+    setIcuOpen(open);
+    try {
+      const id = hospitalInfo?.id || 'all';
+      await fetch(`/api/hospital/${id}/resources`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ icu_available: open }),
+      });
+    } catch {
+      setConn('down');
+    }
   };
 
+  const critical = incoming.filter((c) => (c.severity ?? 0) >= 0.8).length;
+  const soonest = incoming.reduce(
+    (min, c) => (c.eta_minutes != null && c.eta_minutes < min ? c.eta_minutes : min),
+    Infinity,
+  );
+
   return (
-    <div className="flex flex-col min-h-[calc(100vh-80px)] p-6 bg-[#ece5f0] text-[#012622] gap-6 max-w-7xl mx-auto font-body">
-      {/* Top ER Command Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#f5ebf4] text-[#59114d] border border-[#59114d]/20 flex items-center justify-center">
-            <PlusSquare size={24} />
+    <div className="mx-auto flex max-w-[1280px] flex-col gap-3 p-3 lg:p-4">
+      <Panel ink>
+        <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4 sm:gap-x-9">
+            <Stat ink label="Inbound patients" value={incoming.length} />
+            <Stat
+              ink
+              label="Critical"
+              value={critical}
+              tone={critical ? 'critical' : 'default'}
+            />
+            <Stat
+              ink
+              label="Next arrival"
+              value={Number.isFinite(soonest) ? soonest : '--'}
+              unit="min"
+              tone="signal"
+            />
           </div>
-          <div>
-            <h1 className="font-display text-base font-extrabold text-[#012622]">{hospitalInfo?.name || "Bangalore Central ER Desk"}</h1>
-            <p className="text-xs text-[#003b36]">Emergency Department Terminal</p>
-          </div>
-        </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-mono font-bold text-[#003b36] uppercase">ICU Capacity</div>
-            <div className={`text-xs font-bold font-mono ${icuAvailable ? 'text-[#59114d]' : 'text-red-600'}`}>
-              {icuAvailable ? '12 BEDS READY' : 'FULL (DIVERT)'}
-            </div>
-          </div>
-          <button 
-            onClick={toggleIcu}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-mono font-bold transition-all border ${
-              icuAvailable ? 'bg-[#59114d] text-white border-[#59114d] shadow-sm' : 'bg-red-50 text-red-600 border-red-200'
-            }`}
-          >
-            {icuAvailable ? 'AVAILABLE' : 'TOGGLE FULL'}
-          </button>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#fdf3e7] text-[#e98a15] border border-[#e98a15]/40 flex items-center justify-center">
-              <Stethoscope size={20} />
-            </div>
-            <div>
-              <div className="text-[11px] font-mono font-bold text-[#003b36] uppercase">Trauma Bay</div>
-              <div className="text-xs font-bold text-[#e98a15]">STANDBY READY</div>
-            </div>
-          </div>
-          <span className="w-2.5 h-2.5 bg-[#e98a15] rounded-full animate-pulse"></span>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#f5ebf4] text-[#59114d] border border-[#59114d]/20 flex items-center justify-center">
-            <Droplet size={20} />
-          </div>
-          <div>
-            <div className="text-[11px] font-mono font-bold text-[#003b36] uppercase">Blood Supply</div>
-            <div className="text-xs font-bold text-[#012622] font-mono">O- / A+ / B+ OPTIMAL (88%)</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 bg-white p-6 rounded-3xl border border-[#dcd3e3] shadow-elevation-md flex flex-col space-y-4">
-        <div className="flex justify-between items-center pb-3 border-b border-[#dcd3e3]">
-          <h2 className="font-display font-bold text-base text-[#012622] uppercase tracking-wider flex items-center gap-2">
-            <Activity className="text-[#59114d]" size={22} /> Incoming Ambulance Triage Queue ({incomingCases.length})
-          </h2>
-          <span className="text-xs font-mono text-[#003b36]">Real-time sync with Ambulance & AI Agents</span>
-        </div>
-
-        {incomingCases.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-[#003b36] gap-3 border border-dashed border-[#dcd3e3] rounded-2xl p-12 my-4">
-            <User size={48} className="text-[#59114d]/40" />
-            <p className="font-display font-bold text-sm text-[#012622]">No incoming ambulance dispatches at this moment.</p>
-            <p className="text-xs text-[#003b36]">Trigger an SOS from the Citizen App to simulate incoming patients.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {incomingCases.map(inc => {
-              const isAck = acknowledgedCases[inc.incident_id];
-              const severityPct = Math.round((inc.severity || 0.7) * 100);
-
-              return (
-                <div 
-                  key={inc.incident_id}
-                  className="bg-[#ece5f0] p-5 rounded-3xl border border-[#dcd3e3] flex flex-col space-y-4 shadow-elevation-sm hover:border-[#59114d] transition-all"
+            <ConnectionState status={conn} />
+            <div className="flex items-center gap-2 rounded-sm border border-rule-ink bg-ink-raised px-3 py-2">
+              <BedDouble size={14} className="text-on-ink-muted" />
+              <span className="eyebrow eyebrow-ink">ICU capacity</span>
+              <div className="flex overflow-hidden rounded-xs border border-rule-ink">
+                <button
+                  onClick={() => setCapacity(true)}
+                  className={`tap px-3 py-2.5 t-tag transition-colors lg:px-2.5 lg:py-1 ${
+                    icuOpen ? 'bg-verified text-white' : 'bg-transparent text-on-ink-muted'
+                  }`}
                 >
-                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-4 min-w-[140px]">
-                      <div className="bg-[#59114d] text-white p-3.5 rounded-2xl text-center min-w-[80px] shadow-md">
-                        <div className="font-display font-extrabold text-2xl leading-none">{inc.eta_minutes || 7}m</div>
-                        <span className="text-[10px] font-mono uppercase font-bold text-[#e98a15]">ETA</span>
-                      </div>
-                      <div>
-                        <span className="font-mono text-xs font-bold text-[#59114d] block">{inc.incident_id}</span>
-                        <span className="bg-[#f5ebf4] text-[#59114d] font-mono text-[10px] px-2.5 py-0.5 rounded-full uppercase font-bold inline-block mt-1 border border-[#59114d]/20">
-                          {inc.emergency_type}
-                        </span>
-                      </div>
-                    </div>
+                  Accepting
+                </button>
+                <button
+                  onClick={() => setCapacity(false)}
+                  className={`tap px-3 py-2.5 t-tag transition-colors lg:px-2.5 lg:py-1 ${
+                    !icuOpen ? 'bg-critical text-white' : 'bg-transparent text-on-ink-muted'
+                  }`}
+                >
+                  On divert
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        {!icuOpen && (
+          <div className="border-t border-rule-ink bg-critical px-5 py-2">
+            <p className="t-tag text-white">
+              On divert — routing will send new critical cases elsewhere
+            </p>
+          </div>
+        )}
+      </Panel>
 
-                    <div className="flex-1 space-y-1.5">
-                      <div className="text-xs font-semibold text-[#012622] flex items-center gap-2">
-                        <span>Target: <strong className="text-[#59114d] font-bold">{inc.hospital_name}</strong></span>
-                        <span>|</span>
-                        <span className="text-[#003b36] font-mono">Driver Unit: {inc.assigned_driver || 'AMB-UNIT-04'}</span>
-                      </div>
-                      <p className="text-xs text-[#003b36] italic bg-white p-3 rounded-xl border border-[#dcd3e3]">
-                        "{inc.patient_summary}"
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-4 min-w-[240px] justify-between md:justify-end w-full md:w-auto">
-                      <div className="text-right min-w-[90px]">
-                        <div className="text-[10px] font-mono text-[#003b36] uppercase">Severity</div>
-                        <div className="font-bold text-sm text-[#59114d] font-mono">{severityPct}%</div>
-                        <div className="w-16 h-1.5 bg-[#dcd3e3] rounded-full overflow-hidden mt-1">
-                          <div 
-                            className="h-full bg-[#59114d]" 
-                            style={{ width: `${severityPct}%` }}
-                          />
+      <Panel>
+        <PanelHead
+          label={`Inbound · ${incoming.length}`}
+          right={
+            <span className="hidden t-meta text-text-faint sm:inline">
+              {hospitalInfo?.name ?? 'All receiving facilities'}
+            </span>
+          }
+        />
+        {incoming.length === 0 ? (
+          <Empty
+            title="No inbound patients"
+            hint="Patients appear here as soon as dispatch approves a plan that names this hospital."
+          />
+        ) : (
+          <div>
+            {incoming
+              .slice()
+              .sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0))
+              .map((c) => {
+                const band = severityBand(c.severity ?? 0);
+                const ack = acknowledged[c.incident_id];
+                return (
+                  <article
+                    key={c.incident_id}
+                    className={`border-b border-rule px-4 py-4 last:border-0 ${
+                      band.key === 'critical' ? 'bg-critical-wash/40' : ''
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[11px] font-bold text-text">
+                            {c.incident_id}
+                          </span>
+                          <SeverityTag severity={c.severity ?? 0} />
+                          <span className="t-meta uppercase tracking-[0.1em] text-text-faint">
+                            {c.emergency_type}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[13px] leading-relaxed text-text">
+                          {c.patient_summary}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 t-meta text-text-faint">
+                          <span>Unit {c.assigned_driver}</span>
+                          <StatusTag status={c.status} />
                         </div>
                       </div>
 
+                      <div className="flex w-full shrink-0 items-center justify-between gap-4 border-t border-rule pt-3 sm:w-auto sm:justify-end sm:border-0 sm:pt-0">
+                        <div className="text-right">
+                          <div className="eyebrow">Arrives in</div>
+                          <div className="font-mono text-[26px] font-bold leading-none text-signal">
+                            {c.eta_minutes ?? '--'}
+                            <span className="ml-1 text-[13px] font-medium opacity-60">min</span>
+                          </div>
+                        </div>
+                        {ack ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-xs border border-verified/30 bg-verified-wash px-2.5 py-1.5 t-tag text-verified">
+                            <Check size={12} /> Bay ready
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              setAcknowledged((p) => ({ ...p, [c.incident_id]: true }))
+                            }
+                          >
+                            Acknowledge
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
                       <button
-                        onClick={() => handleAcknowledge(inc.incident_id)}
-                        className={`px-4 py-3 rounded-2xl text-xs font-mono font-bold transition-all shadow-sm flex items-center gap-2 ${
-                          isAck 
-                            ? 'bg-[#fdf3e7] text-[#e98a15] border border-[#e98a15]/40' 
-                            : 'bg-[#59114d] text-white hover:bg-[#420b39]'
-                        }`}
+                        onClick={() =>
+                          setOpenThread(openThread === c.incident_id ? null : c.incident_id)
+                        }
+                        className="tap inline-flex items-center py-2.5 t-tag text-text-muted underline underline-offset-[3px] hover:text-text lg:py-1"
                       >
-                        <CheckCircle2 size={16} />
-                        {isAck ? 'BED RESERVED' : 'PREPARE ER BED'}
+                        {openThread === c.incident_id ? 'Hide channel' : 'Message the crew'}
                       </button>
                     </div>
-                  </div>
 
-                  <div className="pt-2 border-t border-[#dcd3e3]">
-                    <LiveEmergencyChat
-                      incidentId={inc.incident_id}
-                      senderRole="hospital"
-                      senderName={hospitalInfo?.name || 'Hospital ER Desk'}
-                      targetPhone="+919876543210"
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                    {openThread === c.incident_id && (
+                      <div className="rise mt-3">
+                        <LiveEmergencyChat
+                          incidentId={c.incident_id}
+                          senderRole="hospital"
+                          senderName={hospitalInfo?.name ?? 'ER desk'}
+                          height="180px"
+                        />
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
           </div>
         )}
-      </div>
+        <p className="border-t border-rule bg-paper-sunk px-4 py-3 t-micro leading-relaxed text-text-faint">
+          <Provenance kind="simulated" className="mr-1.5" />
+          Bed and blood availability shown across the platform are modelled. Connecting a hospital
+          HMIS or HL7 feed would replace them with live counts.
+        </p>
+      </Panel>
     </div>
   );
 }

@@ -1,331 +1,457 @@
-import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Check, TrendingUp, CheckCircle2, RefreshCw, Navigation, CornerUpRight } from 'lucide-react';
+/**
+ * City dispatch console.
+ *
+ * The judge-facing screen, and the one under real time pressure: a person
+ * decides whether to accept the system's recommendation about where a dying
+ * patient goes. Everything here serves "decide fast, and be able to defend it".
+ *
+ * Nothing on this screen is invented. The previous version displayed a
+ * hardcoded "96.4% AI Fusion Accuracy", a fallback hospital score of 0.92, and
+ * default ICU bed counts - all presented as measurements. Values that are not
+ * measured are either omitted or labelled.
+ */
+
+import React, { useState, useEffect, useRef } from 'react';
+import { Check, CornerUpRight, X } from 'lucide-react';
 import MapOverlay from '../components/MapOverlay';
 import AIRationale from '../components/AIRationale';
+import {
+  Panel,
+  PanelHead,
+  Button,
+  Stat,
+  SeverityTag,
+  StatusTag,
+  Provenance,
+  ConnectionState,
+  Empty,
+  severityBand,
+  fmt,
+} from '../components/ui';
 
 export default function DispatcherDashboard() {
   const [incidents, setIncidents] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [autoDispatch, setAutoDispatch] = useState(false);
-  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [showOverride, setShowOverride] = useState(false);
+  const [conn, setConn] = useState('ok');
+  const [lastOk, setLastOk] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const failures = useRef(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchIncidents = async () => {
       try {
         const res = await fetch('/api/incidents/');
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        const incList = data.incidents || [];
-        setIncidents(incList);
+        if (cancelled) return;
+
+        failures.current = 0;
+        setConn('ok');
+        setLastOk(new Date().toLocaleTimeString([], { hour12: false }));
+
+        const list = data.incidents || [];
+        setIncidents(list);
 
         if (autoDispatch) {
-          incList.forEach(async (inc) => {
+          for (const inc of list) {
             if (inc.status === 'awaiting_dispatcher_approval' && inc.action_plan) {
-              try {
-                await fetch(`/api/incidents/${inc.incident_id}/approve`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    dispatcher_id: 'AUTO-DISPATCHER-BOT',
-                    approved_hospital: inc.action_plan?.recommended_hospital?.hospital_id || 'HOSP-AUTO',
-                    approved_route: inc.action_plan?.recommended_route?.route_id || 'ROUTE-AUTO'
-                  })
-                });
-              } catch (e) {}
+              await fetch(`/api/incidents/${inc.incident_id}/approve`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  dispatcher_id: 'AUTO-DISPATCHER',
+                  approved_hospital:
+                    inc.action_plan?.recommended_hospital?.hospital_id ?? '',
+                  approved_route: inc.action_plan?.recommended_route?.route_id ?? '',
+                }),
+              }).catch(() => {});
             }
-          });
+          }
         }
-      } catch (err) {}
+      } catch {
+        if (cancelled) return;
+        failures.current += 1;
+        setConn(failures.current > 2 ? 'down' : 'retry');
+      }
     };
 
     fetchIncidents();
-    const interval = setInterval(fetchIncidents, 2000);
-    return () => clearInterval(interval);
+    const timer = setInterval(fetchIncidents, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [autoDispatch]);
 
-  const selectedIncident = incidents.find(i => i.incident_id === selectedId) || incidents[0] || null;
+  const newestActionable =
+    [...incidents].reverse().find((i) => i.status === 'awaiting_dispatcher_approval') ??
+    [...incidents].reverse().find((i) => i.action_plan) ??
+    incidents[incidents.length - 1] ??
+    null;
+  const selected =
+    incidents.find((i) => i.incident_id === selectedId) || newestActionable;
 
-  const handleApproveOrOverride = async (targetHospital = null) => {
-    if (!selectedIncident) return;
+  const approve = async (hospital = null) => {
+    if (!selected?.action_plan) return;
+    const chosen = hospital || selected.action_plan.recommended_hospital;
+    if (!chosen?.hospital_id) return;
 
-    const chosenHospital = targetHospital || selectedIncident.action_plan?.recommended_hospital;
-    const hospId = chosenHospital?.hospital_id || 'HOSP-DEFAULT';
-
+    setBusy(true);
     try {
-      const res = await fetch(`/api/incidents/${selectedIncident.incident_id}/approve`, {
+      const res = await fetch(`/api/incidents/${selected.incident_id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           dispatcher_id: 'DISPATCHER-01',
-          approved_hospital: hospId,
-          approved_route: selectedIncident.action_plan?.recommended_route?.route_id || 'ROUTE-DEFAULT'
-        })
+          approved_hospital: chosen.hospital_id,
+          approved_route: selected.action_plan?.recommended_route?.route_id ?? '',
+        }),
       });
-
       if (res.ok) {
-        const updatedBackendInc = await res.json();
-        setIncidents(prev => prev.map(i => i.incident_id === selectedIncident.incident_id ? updatedBackendInc : i));
-        setShowOverrideModal(false);
+        const updated = await res.json();
+        setIncidents((prev) =>
+          prev.map((i) => (i.incident_id === updated.incident_id ? updated : i)),
+        );
+        setShowOverride(false);
       }
-    } catch (err) {}
+    } catch {
+      setConn('retry');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const routeCoords = selectedIncident?.citizen_view?.route_coordinates 
-    || selectedIncident?.action_plan?.recommended_route?.coordinates 
-    || [];
+  const view = selected?.citizen_view ?? {};
+  const plan = selected?.action_plan ?? null;
+  const routeCoords = view.route_coordinates ?? plan?.recommended_route?.coordinates ?? [];
 
-  const pendingCount = incidents.filter(i => i.status === 'processing' || i.status === 'awaiting_dispatcher_approval').length;
-  const dispatchedCount = incidents.filter(i => i.status === 'dispatched' || i.status === 'completed').length;
+  const queue = incidents.filter(
+    (i) => i.status === 'processing' || i.status === 'awaiting_dispatcher_approval',
+  );
+  const active = incidents.filter((i) => i.status === 'dispatched');
+  const needsAction = incidents.filter(
+    (i) => i.status === 'awaiting_dispatcher_approval',
+  ).length;
+  const peakSeverity = incidents.reduce((m, i) => Math.max(m, i.severity ?? 0), 0);
+  const hot = peakSeverity >= 0.8 && needsAction > 0;
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-80px)] gap-6 p-6 bg-[#ece5f0] text-[#012622] max-w-7xl mx-auto font-body">
-      {/* Top Admin Stats Panel */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#f5ebf4] text-[#59114d] border border-[#59114d]/20 flex items-center justify-center">
-            <ShieldAlert size={24} />
+    <div className="mx-auto flex min-h-[calc(100vh-56px)] max-w-[1600px] flex-col gap-3 p-3 lg:p-4">
+      {/* ---- Command rail ------------------------------------------------ */}
+      <Panel ink className="relative overflow-hidden">
+        {hot && <div className="sweep absolute inset-x-0 top-0 h-[2px] overflow-hidden" />}
+        <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-4 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4 sm:gap-x-9">
+            <Stat ink label="Awaiting approval" value={needsAction} tone={needsAction ? 'signal' : 'default'} />
+            <Stat ink label="In queue" value={queue.length} />
+            <Stat ink label="Units dispatched" value={active.length} />
+            <Stat
+              ink
+              label="Peak severity"
+              value={peakSeverity ? `${fmt.pct(peakSeverity)}%` : '--'}
+              tone={peakSeverity >= 0.8 ? 'critical' : 'default'}
+              sub={peakSeverity ? severityBand(peakSeverity).label : 'No active calls'}
+            />
           </div>
-          <div>
-            <div className="text-[11px] font-mono font-bold text-[#003b36] uppercase">Active Queue</div>
-            <div className="text-2xl font-extrabold font-display text-[#012622]">{pendingCount}</div>
+
+          <div className="flex items-center gap-3">
+            <ConnectionState status={conn} lastOk={lastOk} />
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-sm border border-rule-ink bg-ink-raised px-3 py-2">
+              <span className="eyebrow eyebrow-ink">Auto-approve</span>
+              <button
+                role="switch"
+                aria-checked={autoDispatch}
+                onClick={() => setAutoDispatch((v) => !v)}
+                className={`tap relative h-7 w-12 rounded-full transition-colors lg:h-[18px] lg:w-8 ${
+                  autoDispatch ? 'bg-signal' : 'bg-ink-sunk'
+                }`}
+              >
+                <span
+                  className={`absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white transition-all lg:top-[2px] lg:h-[14px] lg:w-[14px] ${
+                    autoDispatch ? 'left-[23px] lg:left-[16px]' : 'left-[3px] lg:left-[2px]'
+                  }`}
+                />
+              </button>
+            </label>
           </div>
         </div>
+      </Panel>
 
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#fdf3e7] text-[#e98a15] border border-[#e98a15]/40 flex items-center justify-center">
-            <CheckCircle2 size={24} />
-          </div>
-          <div>
-            <div className="text-[11px] font-mono font-bold text-[#003b36] uppercase">Dispatched Calls</div>
-            <div className="text-2xl font-extrabold font-display text-[#012622]">{dispatchedCount}</div>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center gap-4">
-          <div className="w-12 h-12 rounded-2xl bg-[#f5ebf4] text-[#59114d] border border-[#59114d]/20 flex items-center justify-center">
-            <TrendingUp size={24} />
-          </div>
-          <div>
-            <div className="text-[11px] font-mono font-bold text-[#003b36] uppercase">AI Fusion Accuracy</div>
-            <div className="text-2xl font-extrabold font-display text-[#59114d]">96.4%</div>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm flex items-center justify-between">
-          <div>
-            <div className="text-[11px] font-mono font-bold text-[#003b36] uppercase">Approval Mode</div>
-            <div className="text-xs font-bold text-[#59114d]">
-              {autoDispatch ? 'AUTOMATIC APPROVAL' : 'MANUAL DISPATCH'}
-            </div>
-          </div>
-          <button 
-            onClick={() => setAutoDispatch(!autoDispatch)}
-            className={`px-4 py-2 rounded-full text-xs font-mono font-bold transition-all border ${
-              autoDispatch 
-                ? 'bg-[#59114d] text-white border-[#59114d] shadow-sm' 
-                : 'bg-[#f4eff7] text-[#012622] border-[#dcd3e3] hover:bg-[#dcd3e3]'
-            }`}
-          >
-            {autoDispatch ? 'AUTO (ON)' : 'MANUAL'}
-          </button>
-        </div>
-      </div>
-
-      {/* Main Workspace */}
-      <div className="flex flex-col lg:flex-row gap-6 flex-1">
-        {/* Left Sidebar - Live Emergency Queue */}
-        <div className="w-full lg:w-80 flex flex-col gap-3 bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-sm">
-          <div className="flex justify-between items-center pb-2 border-b border-[#dcd3e3]">
-            <h2 className="font-display font-bold text-xs uppercase text-[#59114d] tracking-wider flex items-center gap-1.5">
-              <ShieldAlert size={16} /> Live Emergency Queue
-            </h2>
-            <button 
-              onClick={async () => {
-                await fetch('/api/incidents/clear', { method: 'POST' }).catch(() => {});
-                setIncidents([]);
-                setSelectedId(null);
-              }}
-              className="text-[11px] font-mono text-[#003b36] hover:text-[#59114d] underline font-semibold"
-            >
-              Clear
-            </button>
-          </div>
-
+      <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-[240px_minmax(0,1fr)] lg:grid-cols-[270px_minmax(0,1fr)] xl:grid-cols-[290px_minmax(0,1fr)_380px]">
+        {/* ---- Queue ----------------------------------------------------- */}
+        <Panel className="flex flex-col overflow-hidden md:max-h-[calc(100vh-150px)]">
+          <PanelHead
+            label={`Call queue · ${incidents.length}`}
+            right={
+              needsAction > 0 && (
+                <span className="t-tag text-signal-hover">
+                  {needsAction} need approval
+                </span>
+              )
+            }
+          />
           {incidents.length === 0 ? (
-            <div className="text-[#003b36] text-xs p-6 text-center italic">
-              No active emergencies. Trigger SOS from Citizen App.
-            </div>
+            <Empty
+              title="No active calls"
+              hint="Incidents raised from the citizen app appear here the moment the agents finish assessing them."
+            />
           ) : (
-            <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
-              {incidents.map(inc => {
-                const isSelected = selectedIncident?.incident_id === inc.incident_id;
-                const isPending = inc.status === 'awaiting_dispatcher_approval' || inc.status === 'processing';
-
-                return (
-                  <button
-                    key={inc.incident_id}
-                    onClick={() => setSelectedId(inc.incident_id)}
-                    className={`w-full p-4 rounded-2xl text-left border transition-all ${
-                      isSelected 
-                        ? 'bg-[#f5ebf4] border-[#59114d] shadow-sm' 
-                        : 'bg-[#ece5f0] border-[#dcd3e3] hover:border-[#59114d]/40'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="font-mono text-xs font-bold text-[#59114d]">{inc.incident_id}</span>
-                      <span className={`text-[10px] font-mono px-2.5 py-0.5 rounded-full font-bold uppercase ${
-                        inc.status === 'dispatched' 
-                          ? 'bg-[#fdf3e7] text-[#e98a15] border border-[#e98a15]/40' 
-                          : isPending 
-                          ? 'bg-[#f5ebf4] text-[#59114d] animate-pulse border border-[#59114d]/30' 
-                          : 'bg-[#f4eff7] text-[#003b36]'
-                      }`}>
-                        {inc.status === 'awaiting_dispatcher_approval' ? 'NEEDS APPROVAL' : inc.status}
-                      </span>
-                    </div>
-
-                    <div className="text-xs font-bold text-[#012622] truncate mb-1">
-                      {inc.emergency_type || inc.citizen_text || 'Emergency Incident'}
-                    </div>
-
-                    <div className="text-[11px] font-mono text-[#003b36] flex justify-between">
-                      <span>Severity: {inc.severity ? Math.round(inc.severity * 100) : 50}%</span>
-                      <span className="truncate max-w-[120px]">{inc.citizen_view?.hospital_name || 'Calculating...'}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Center/Right - Map & AI Rationale Details */}
-        {selectedIncident ? (
-          <div className="flex-1 flex flex-col lg:flex-row gap-6">
-            {/* Map & Actions */}
-            <div className="flex-1 flex flex-col gap-4">
-              <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-md flex flex-col flex-1">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-display font-bold text-base text-[#012622]">Tactical Spatial Route Map</h3>
-                  <span className="text-xs font-mono font-bold text-[#59114d]">Incident: {selectedIncident.incident_id}</span>
-                </div>
-
-                <div className="relative flex-1 min-h-[360px] rounded-2xl overflow-hidden border border-[#dcd3e3]">
-                  {routeCoords.length > 0 ? (
-                    <MapOverlay routeCoordinates={routeCoords} height="100%" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-[#ece5f0] text-[#003b36] text-xs font-mono">
-                      <RefreshCw className="animate-spin mr-2 text-[#59114d]" size={18} /> Processing AI Spatial Route...
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Action Controls */}
-              <div className="flex flex-col gap-3">
-                {autoDispatch && (
-                  <div className="p-3.5 bg-[#f5ebf4] border border-[#59114d]/30 rounded-2xl text-[#59114d] text-xs font-mono font-bold flex items-center justify-between">
-                    <span>AUTO MODE ACTIVE — AI automatically approving incoming plans.</span>
-                    <span>Status: {selectedIncident.status}</span>
-                  </div>
-                )}
-
-                <div className="flex gap-4">
-                  {!autoDispatch && (selectedIncident.status === 'awaiting_dispatcher_approval' || selectedIncident.status === 'processing') && (
-                    <button 
-                      onClick={() => handleApproveOrOverride()} 
-                      className="flex-1 bg-[#59114d] hover:bg-[#420b39] text-white font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 shadow-elevation-md transition-all active:scale-95 text-xs font-mono"
+            <div className="min-h-0 flex-1 md:overflow-y-auto">
+              {incidents
+                .slice()
+                .reverse()
+                .map((inc) => {
+                  const isSel = selected?.incident_id === inc.incident_id;
+                  const band = severityBand(inc.severity ?? 0);
+                  return (
+                    <button
+                      key={inc.incident_id}
+                      onClick={() => setSelectedId(inc.incident_id)}
+                      className={`block w-full border-b border-rule/70 px-4 py-3 text-left transition-colors ${
+                        isSel ? 'bg-signal-wash' : 'bg-paper hover:bg-paper-hover'
+                      }`}
                     >
-                      <Check size={18}/> APPROVE AI DISPATCH PLAN
-                    </button>
-                  )}
-
-                  <button 
-                    onClick={() => setShowOverrideModal(!showOverrideModal)} 
-                    className="flex-1 bg-white hover:bg-[#f4eff7] text-[#012622] border border-[#dcd3e3] font-bold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 shadow-elevation-sm transition-all active:scale-95 text-xs font-mono"
-                  >
-                    <CornerUpRight size={18}/> {showOverrideModal ? 'CLOSE OVERRIDE' : 'MANUAL RE-ROUTE / OVERRIDE'}
-                  </button>
-                </div>
-
-                {showOverrideModal && (
-                  <div className="p-5 bg-white border border-[#59114d] rounded-3xl space-y-3 shadow-elevation-md">
-                    <div className="flex justify-between items-center">
-                      <h4 className="text-xs font-mono font-bold text-[#59114d] uppercase tracking-wider flex items-center gap-1.5">
-                        <Navigation size={16} /> Manual Override — Pick Destination Hospital
-                      </h4>
-                      <span className="text-[11px] text-[#003b36] font-mono">Select any candidate hospital to re-route</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {selectedIncident.action_plan?.all_hospitals?.slice(0, 4).map((h, idx) => (
-                        <button
-                          key={h.hospital_id || idx}
-                          onClick={() => handleApproveOrOverride(h)}
-                          className="p-3.5 bg-[#ece5f0] hover:bg-[#f5ebf4] rounded-2xl border border-[#dcd3e3] hover:border-[#59114d] text-left flex justify-between items-center transition-all"
-                        >
-                          <div>
-                            <div className="text-xs font-bold text-[#012622]">{idx + 1}. {h.name}</div>
-                            <div className="text-[10px] font-mono text-[#003b36]">ICU: {h.icu_available ?? 5} beds | Blood: {h.blood_availability ? Math.round(h.blood_availability*100) : 85}%</div>
-                          </div>
-                          <span className="text-[10px] font-mono font-bold bg-[#59114d] text-white px-2.5 py-1 rounded-full">Re-Route</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right - AI Rationale & Hospital Rankings */}
-            <div className="w-full lg:w-96 flex flex-col gap-4">
-              {selectedIncident.action_plan ? (
-                <>
-                  <AIRationale plan={selectedIncident.action_plan} />
-
-                  <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-md space-y-3">
-                    <h3 className="font-display font-bold text-xs uppercase text-[#003b36] tracking-wider">
-                      Ranked Destination Hospitals
-                    </h3>
-                    <div className="flex flex-col gap-2.5">
-                      {selectedIncident.action_plan.all_hospitals?.map((h, i) => (
-                        <button 
-                          key={h.hospital_id || i}
-                          onClick={() => handleApproveOrOverride(h)}
-                          className={`p-3.5 rounded-2xl border text-xs text-left transition-all ${
-                            selectedIncident.citizen_view?.hospital_name === h.name || (i === 0 && !selectedIncident.citizen_view?.hospital_name)
-                              ? 'bg-[#f5ebf4] border-[#59114d] text-[#012622] shadow-sm' 
-                              : 'bg-[#ece5f0] border-[#dcd3e3] hover:border-[#59114d]/40'
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`font-mono text-[11px] font-bold ${
+                            isSel ? 'text-signal-hover' : 'text-text'
                           }`}
                         >
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-bold">{i + 1}. {h.name}</span>
-                            <span className="font-mono text-[10px] font-bold bg-white px-2 py-0.5 rounded-full border border-[#dcd3e3]">
-                              Score: {h.score ? h.score.toFixed(2) : '0.92'}
-                            </span>
-                          </div>
-                          <div className="text-[11px] font-mono text-[#003b36] flex justify-between mt-1">
-                            <span>ICU: {h.icu_available ?? 4} beds</span>
-                            <span className="text-[#59114d] font-bold hover:underline">Select & Route</span>
-                          </div>
-                        </button>
-                      ))}
+                          {inc.incident_id}
+                        </span>
+                        <StatusTag status={inc.status} />
+                      </div>
+                      <div className="mt-1.5 truncate text-[12px] font-semibold capitalize text-text">
+                        {inc.emergency_type ?? 'Assessing…'}
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-text-muted">
+                        {inc.citizen_text}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                        <SeverityTag severity={inc.severity ?? 0} />
+                        <span className="min-w-0 truncate t-meta text-text-faint">
+                          {inc.citizen_view?.hospital_name ?? '—'}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+          )}
+        </Panel>
+
+        {/* ---- Map + actions --------------------------------------------- */}
+        {selected ? (
+          <div className="flex min-h-[520px] flex-col gap-3">
+            <Panel className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <PanelHead
+                label="Tactical map"
+                right={
+                  <div className="hidden items-center gap-3 t-meta sm:flex">
+                    <span className="flex items-center gap-1.5 text-text-muted">
+                      <span className="inline-block h-0.5 w-4 bg-ink-raised" style={{ backgroundImage: 'repeating-linear-gradient(90deg,#003b36 0 4px,transparent 4px 7px)' }} />
+                      Phase 1 · to patient
+                    </span>
+                    <span className="flex items-center gap-1.5 text-text-muted">
+                      <span className="inline-block h-[3px] w-4 rounded-full bg-signal" />
+                      Phase 2 · to ER
+                    </span>
+                  </div>
+                }
+              />
+              <div className="relative min-h-[300px] flex-1 sm:min-h-[360px] lg:min-h-[420px]">
+                {routeCoords.length > 0 || view.phase1_route_coordinates?.length > 0 ? (
+                  <MapOverlay
+                    height="100%"
+                    routeCoordinates={routeCoords}
+                    phase1Coordinates={view.phase1_route_coordinates}
+                    origin={view.origin ?? selected.location}
+                    hospital={
+                      view.hospital_location
+                        ? { ...view.hospital_location, name: view.hospital_name }
+                        : null
+                    }
+                    hub={view.phase1_hub}
+                    activePhase={selected.status === 'dispatched' ? 1 : 2}
+                    className="!rounded-none !border-0"
+                  />
+                ) : (
+                  <div className="absolute inset-0 grid place-items-center bg-paper-sunk">
+                    <div className="text-center">
+                      <div className="live-dot mx-auto mb-3 h-2 w-2 rounded-full bg-signal" />
+                      <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-faint">
+                        Agents computing route
+                      </p>
                     </div>
                   </div>
-                </>
-              ) : (
-                <div className="bg-white p-6 rounded-3xl border border-[#dcd3e3] text-xs text-[#003b36] text-center font-mono shadow-elevation-sm">
-                  Awaiting AI Decision Fusion Engine response...
+                )}
+              </div>
+              {(view.eta_minutes != null || view.distance_meters != null) && (
+                <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-t border-rule px-5 py-3">
+                  <Stat
+                    label="Hub to patient"
+                    value={view.phase1_eta_minutes ?? '--'}
+                    unit="min"
+                    sub={view.phase1_hub?.name}
+                  />
+                  <Stat
+                    label="Patient to ER"
+                    value={view.eta_minutes ?? '--'}
+                    unit="min"
+                    tone="signal"
+                    sub={view.hospital_name}
+                  />
+                  <Stat
+                    label="Transport distance"
+                    value={fmt.km(view.distance_meters)}
+                    unit="km"
+                  />
                 </div>
               )}
-            </div>
+            </Panel>
+
+            {/* Actions */}
+            <Panel className="p-3">
+              {autoDispatch && (
+                <div className="mb-3 flex items-center justify-between gap-3 rounded-sm border border-signal-edge bg-signal-wash px-3 py-2">
+                  <span className="t-tag text-signal-hover">
+                    Auto-approve is on — plans dispatch without review
+                  </span>
+                  <StatusTag status={selected.status} />
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                {!autoDispatch && selected.status === 'awaiting_dispatcher_approval' && (
+                  <Button onClick={() => approve()} disabled={busy || !plan} className="flex-1">
+                    <Check size={15} />
+                    {busy ? 'Dispatching…' : 'Approve and dispatch'}
+                  </Button>
+                )}
+                <Button
+                  variant="quiet"
+                  onClick={() => setShowOverride((v) => !v)}
+                  disabled={!plan}
+                  className="flex-1"
+                >
+                  {showOverride ? <X size={15} /> : <CornerUpRight size={15} />}
+                  {showOverride ? 'Close' : 'Send to a different hospital'}
+                </Button>
+              </div>
+
+              {showOverride && plan?.all_hospitals?.length > 0 && (
+                <div className="rise mt-3 border-t border-rule pt-3">
+                  <div className="eyebrow mb-2">Override destination</div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {plan.all_hospitals.map((h, i) => (
+                      <button
+                        key={h.hospital_id ?? i}
+                        onClick={() => approve(h)}
+                        disabled={busy}
+                        className="rounded-sm border border-rule bg-paper-sunk p-3 text-left transition-colors hover:border-signal hover:bg-signal-wash disabled:opacity-50"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-[12px] font-semibold leading-snug text-text">
+                            {h.name}
+                          </span>
+                          <span className="shrink-0 font-mono text-[11px] font-bold text-text">
+                            {fmt.score(h.score)}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2 t-meta text-text-faint">
+                          <span>
+                            {h.road_eta_seconds
+                              ? `${fmt.minutes(h.road_eta_seconds)} min by road`
+                              : 'ETA pending'}
+                          </span>
+                          <Provenance kind={h.capability_provenance}>
+                            {h.capability_provenance === 'curated' ? 'Verified' : 'Modelled'}
+                          </Provenance>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </Panel>
           </div>
         ) : (
-          <div className="flex-1 bg-white rounded-3xl flex flex-col items-center justify-center text-[#003b36] border border-[#dcd3e3] p-12 shadow-elevation-sm">
-            <ShieldAlert size={48} className="mb-3 text-[#59114d]" />
-            <p className="font-display font-bold text-base text-[#012622]">Select an emergency call from the queue to review AI recommendations.</p>
-          </div>
+          <Panel className="grid place-items-center">
+            <Empty
+              title="Select a call to review"
+              hint="Pick an incident from the queue to see its route, the ranked destinations, and why the system chose one over the others."
+            />
+          </Panel>
         )}
+
+        {/* ---- Rationale -------------------------------------------------- */}
+        <div className="grid content-start gap-3 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1 xl:max-h-[calc(100vh-150px)] xl:overflow-y-auto">
+          {plan ? (
+            <>
+              <AIRationale plan={plan} />
+              <Panel>
+                <PanelHead label={`Ranked destinations · ${plan.all_hospitals?.length ?? 0}`} />
+                <div>
+                  {plan.all_hospitals?.map((h, i) => {
+                    const chosen = view.hospital_name
+                      ? view.hospital_name === h.name
+                      : i === 0;
+                    return (
+                      <button
+                        key={h.hospital_id ?? i}
+                        onClick={() => approve(h)}
+                        disabled={busy}
+                        className={`block w-full border-b border-rule/70 px-4 py-3 text-left transition-colors last:border-0 ${
+                          chosen ? 'bg-signal-wash' : 'hover:bg-paper-hover'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <span className="mt-px t-meta font-bold text-text-faint">
+                              {String(i + 1).padStart(2, '0')}
+                            </span>
+                            <span className="min-w-0 text-[12px] font-semibold leading-snug text-text">
+                              {h.name}
+                            </span>
+                          </div>
+                          <span className="shrink-0 font-mono text-[12px] font-bold text-text">
+                            {fmt.score(h.score)}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+                          <Provenance kind={h.capability_provenance} />
+                          <span className="t-meta text-text-faint">
+                            {h.road_eta_seconds
+                              ? `${fmt.minutes(h.road_eta_seconds)} min`
+                              : '—'}
+                          </span>
+                          <span className="t-meta text-text-faint">
+                            ICU <span className="val-modelled">{h.icu_available ?? '—'}</span>
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="border-t border-rule bg-paper-sunk px-4 py-2.5 t-micro leading-relaxed text-text-faint">
+                  Capability profiles are curated from published hospital data. Live bed counts are
+                  modelled — no hospital HMIS feed is integrated.
+                </p>
+              </Panel>
+            </>
+          ) : selected ? (
+            <Panel className="grid place-items-center">
+              <Empty
+                title="Assessing the call"
+                hint="The accessibility, coordinator, traffic, hospital and routing agents are still working. The plan appears here when fusion completes."
+              />
+            </Panel>
+          ) : null}
+        </div>
       </div>
     </div>
   );

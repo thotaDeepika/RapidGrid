@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import SharedShell from './components/SharedShell';
@@ -9,56 +9,48 @@ import DispatcherDashboard from './views/DispatcherDashboard';
 import DriverDashboard from './views/DriverDashboard';
 import HospitalDashboard from './views/HospitalDashboard';
 
-function ProtectedRoute({ allowedRoles, children }) {
-  const { role, login } = useAuth();
-  const location = window.location.pathname.replace('/', '');
-  
-  useEffect(() => {
-    if (allowedRoles && allowedRoles.includes(location) && role !== location) {
-      login(location);
-    }
-  }, [allowedRoles, location, role, login]);
-
+/**
+ * Demo role gate.
+ *
+ * Deliberately permissive: visiting /dispatcher signs you in as the
+ * dispatcher, so a judge can open four tabs and watch one incident move
+ * between roles without juggling logins.
+ *
+ * This is NOT access control, and it is not presented as such - the login
+ * screen says so in as many words. The previous version did the same thing
+ * while calling itself ProtectedRoute, which implied a guarantee it never
+ * provided. Real deployments need authentication here.
+ */
+function DemoRole({ role, children }) {
+  const { role: current, login } = useAuth();
+  React.useEffect(() => {
+    if (current !== role) login(role);
+  }, [current, role, login]);
   return children;
 }
 
-function App() {
+const portal = (role, View) => (
+  <DemoRole role={role}>
+    <SharedShell>
+      <View />
+    </SharedShell>
+  </DemoRole>
+);
+
+export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
-          
-          <Route path="/citizen" element={
-            <ProtectedRoute allowedRoles={['citizen']}>
-              <CitizenDashboard />
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/dispatcher" element={
-            <ProtectedRoute allowedRoles={['dispatcher']}>
-              <SharedShell><DispatcherDashboard /></SharedShell>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/driver" element={
-            <ProtectedRoute allowedRoles={['driver']}>
-              <SharedShell><DriverDashboard /></SharedShell>
-            </ProtectedRoute>
-          } />
-          
-          <Route path="/hospital" element={
-            <ProtectedRoute allowedRoles={['hospital']}>
-              <SharedShell><HospitalDashboard /></SharedShell>
-            </ProtectedRoute>
-          } />
-          
+          <Route path="/citizen" element={portal('citizen', CitizenDashboard)} />
+          <Route path="/dispatcher" element={portal('dispatcher', DispatcherDashboard)} />
+          <Route path="/driver" element={portal('driver', DriverDashboard)} />
+          <Route path="/hospital" element={portal('hospital', HospitalDashboard)} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>
   );
 }
-
-export default App;

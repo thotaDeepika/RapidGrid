@@ -331,6 +331,30 @@ class HospitalEntry(BaseModel):
         default_factory=list,
         description="Per-factor breakdown — makes scoring explainable.",
     )
+    road_eta_seconds: float | None = Field(
+        default=None,
+        description=(
+            "Travel time along the actual road network, from the stage-2 "
+            "re-ranking pass. None when the road graph was unavailable and "
+            "only the straight-line estimate was used."
+        ),
+    )
+    road_distance_m: float | None = Field(
+        default=None,
+        description="Distance along the routed road path, in metres.",
+    )
+    capability_provenance: str = Field(
+        default="simulated",
+        description=(
+            "'curated' when this facility's capability profile comes from the "
+            "reviewed table; 'simulated' when it is a modelled estimate. "
+            "The UI must label these differently."
+        ),
+    )
+    emergency_receiving: bool = Field(
+        default=True,
+        description="Whether the facility accepts emergency ambulance arrivals.",
+    )
     reasoning: str = Field(
         ...,
         description=(

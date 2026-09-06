@@ -1,112 +1,379 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+   RapidGrid design system
+
+   Register: emergency dispatch console, not consumer SaaS. Dense, legible at
+   a glance, readable at 3am. Elevation comes from surface value and hairline
+   rules rather than large shadows and 24px radii.
+
+   The palette is the project's own: evergreen / lavender-mist / amber-earth /
+   deep-purple. Every colour below derives from those five. Nothing else is
+   permitted - no stray violets, no stray cyans.
+   =========================================================================== */
+
 @theme {
-  /* Exact User-Defined Palette Tokens */
-  --color-evergreen: #012622;
-  --color-evergreen-2: #003b36;
-  --color-lavender-mist: #ece5f0;
-  --color-amber-earth: #e98a15;
-  --color-deep-purple: #59114d;
+  /* --- Source palette ---------------------------------------------------- */
+  --color-evergreen:      #012622;
+  --color-evergreen-2:    #003b36;
+  --color-lavender-mist:  #ece5f0;
+  --color-amber-earth:    #e98a15;
+  --color-deep-purple:    #59114d;
 
-  /* Theme Hierarchy: #012622 is Primary, #E98A15 is Highlights, #59114D is used sparingly */
-  --color-primary: #012622;
-  --color-primary-hover: #003b36;
-  --color-primary-light: #e6f0ef;
-  --color-on-primary: #ffffff;
+  /* --- Semantic surfaces -------------------------------------------------
+     `ink` is the command surface (dark). `field` is the light working area. */
+  --color-ink:            #012622;
+  --color-ink-raised:     #003b36;
+  --color-ink-hover:      #014f48;
+  --color-on-ink:         #eef4f2;
+  --color-on-ink-muted:   #8fa8a3;
 
-  --color-accent: #e98a15;
-  --color-accent-hover: #d67a0a;
-  --color-accent-light: #fdf3e7;
-  --color-on-accent: #ffffff;
+  --color-field:          #ece5f0;
+  --color-paper:          #ffffff;
+  --color-paper-sunk:     #f5f1f8;
+  --color-paper-hover:    #faf7fc;
 
-  --color-[#59114d]: #59114d;
+  /* --- Text -------------------------------------------------------------- */
+  --color-text:           #012622;
+  --color-text-muted:     #4d6661;
+  --color-text-faint:     #7d918d;
 
-  --color-surface-bg: #ece5f0;
-  --color-surface-card: #ffffff;
-  --color-surface-card-hover: #fcf9fd;
-  --color-surface-subtle: #f4eff7;
+  /* --- Rules & edges ----------------------------------------------------- */
+  --color-rule:           #dcd3e3;
+  --color-rule-strong:    #c3b6cd;
+  --color-rule-ink:       #0d423c;
+  --color-ink-sunk:       #0d423c;
 
-  --color-text-main: #012622;
-  --color-text-muted: #003b36;
-  --color-text-light: #4d6661;
+  /* --- Signal: the single accent. Urgency, action, live state. ----------- */
+  --color-signal:         #e98a15;
+  --color-signal-hover:   #cf7708;
+  --color-signal-wash:    #fdf3e7;
+  --color-signal-edge:    #f3c185;
 
-  --color-border-subtle: #dcd3e3;
-  --color-border-accent: #012622;
+  /* --- Critical: reserved for highest severity ONLY. --------------------- */
+  --color-critical:       #59114d;
+  --color-critical-wash:  #f6ecf4;
+  --color-critical-edge:  #c98fbd;
 
-  --font-display: "Plus Jakarta Sans", sans-serif;
-  --font-body: "Inter", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  /* --- Provenance. The signature dimension. -----------------------------
+     Verified data reads solid and confident; modelled data reads honest. */
+  --color-verified:       #1c6b3f;
+  --color-verified-wash:  #e8f3ec;
+  --color-modelled:       #6b5b7d;
+  --color-modelled-wash:  #f0ecf3;
+
+  /* --- Type -------------------------------------------------------------- */
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* --- Radii. Instrument panel, not chat bubble. ------------------------- */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 }
 
 @layer base {
-  html, body {
-    width: 100vw;
+  html {
+    /* NOT 100vw - that includes the scrollbar and causes horizontal overflow. */
+    width: 100%;
+    background-color: var(--color-field);
+  }
+
+  body {
+    width: 100%;
     margin: 0;
     padding: 0;
-    background-color: #ece5f0;
-    color: #012622;
+    background-color: var(--color-field);
+    color: var(--color-text);
     font-family: var(--font-body);
+    font-feature-settings: "cv05" 1, "cv08" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-  }
-  
-  body {
     overscroll-behavior: none;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
-    color: #012622;
+    color: var(--color-text);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* Telemetry never jitters as digits tick. */
+  .font-mono, code, kbd, samp {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: var(--color-signal);
+    color: #fff;
   }
 }
 
-/* Custom Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #ece5f0;
-}
+/* ===========================================================================
+   Scrollbars - thin, part of the instrument
+   =========================================================================== */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #003b36;
-  border-radius: 9999px;
+  background: var(--color-rule-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #012622;
+::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: var(--color-text-faint); }
+
+.scroll-ink::-webkit-scrollbar-thumb { background-color: #14514a; background-clip: content-box; }
+
+/* ===========================================================================
+   Provenance - the signature treatment
+
+   The product's whole thesis is that it distinguishes what it knows from what
+   it models. That distinction is drawn, not just labelled: verified values sit
+   on a solid ground; modelled values carry a hatched underlay so they read as
+   estimates even at a glance, before you read the tag.
+   =========================================================================== */
+.prov-verified {
+  color: var(--color-verified);
+  background: var(--color-verified-wash);
+  border: 1px solid color-mix(in srgb, var(--color-verified) 25%, transparent);
 }
 
-/* Glassmorphism & Soft Elevation Utility Classes */
-.glass-card-light {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(1, 38, 34, 0.15);
-  box-shadow: 0 4px 20px -2px rgba(1, 38, 34, 0.06), 0 1px 3px rgba(1, 38, 34, 0.04);
+.prov-modelled {
+  color: var(--color-modelled);
+  border: 1px solid color-mix(in srgb, var(--color-modelled) 28%, transparent);
+  background-color: var(--color-modelled-wash);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 3px,
+    color-mix(in srgb, var(--color-modelled) 14%, transparent) 3px 4px
+  );
 }
 
-.shadow-elevation-sm {
-  box-shadow: 0 2px 8px rgba(1, 38, 34, 0.05), 0 1px 2px rgba(233, 138, 21, 0.03);
+/* A modelled number inline in prose: dotted underline, never silent. */
+.val-modelled {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, var(--color-modelled) 55%, transparent);
 }
 
-.shadow-elevation-md {
-  box-shadow: 0 8px 24px -4px rgba(1, 38, 34, 0.12), 0 2px 6px rgba(233, 138, 21, 0.04);
+/* ===========================================================================
+   Panels - elevation by value, edged by rule
+   =========================================================================== */
+.panel {
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
 }
 
-.shadow-elevation-lg {
-  box-shadow: 0 16px 36px -6px rgba(1, 38, 34, 0.16), 0 4px 12px rgba(1, 38, 34, 0.06);
+.panel-ink {
+  background: var(--color-ink);
+  border: 1px solid var(--color-rule-ink);
+  border-radius: var(--radius-md);
+  color: var(--color-on-ink);
 }
 
-.shadow-amber-glow {
-  box-shadow: 0 0 20px rgba(233, 138, 21, 0.4);
+/* The eyebrow that heads every panel: small, mono, wide-tracked. */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
 }
 
-.shadow-evergreen-glow {
-  box-shadow: 0 0 20px rgba(1, 38, 34, 0.35);
+.eyebrow-ink { color: var(--color-on-ink-muted); }
+
+/* ---------------------------------------------------------------------------
+   Responsive type floor
+
+   A dispatch console wants dense labels, but 9px is below what most people can
+   read on a phone held at arm's length - and the audit found 63 sub-10.5px
+   nodes on the console alone. These three classes carry every small label in
+   the app, so the floor is raised in one place: comfortably larger on touch,
+   tightening only once there is a pointer and the screen is wide.
+   --------------------------------------------------------------------------- */
+.t-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 1.25;
 }
 
-/* Leaflet Light Tile Tweaks */
+.t-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.t-micro {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (min-width: 1024px) {
+  .eyebrow { font-size: 10.5px; }
+  .t-tag   { font-size: 10px; }
+  .t-meta  { font-size: 11px; }
+  .t-micro { font-size: 11.5px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Touch targets
+
+   Anything interactive needs a 44px-ish hit area on a small screen. The hit
+   area is extended with a pseudo-element rather than by inflating the control,
+   so the layout stays dense while the target does not.
+
+   Keyed on viewport width, NOT on `pointer: coarse`. Pointer media queries are
+   unreliable: they miss touch laptops and hybrid devices, and they do not
+   report coarse in most automated browsers - which meant this rule silently
+   did nothing everywhere it was measured.
+   --------------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+  .tap {
+    position: relative;
+  }
+  .tap::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+
+  /* Leaflet ships 30x30 zoom controls - below the touch minimum. */
+  .leaflet-bar a,
+  .leaflet-touch .leaflet-bar a {
+    width: 42px !important;
+    height: 42px !important;
+    line-height: 42px !important;
+    font-size: 20px !important;
+  }
+
+  /* Its attribution link is a 52x12 tap target; give it room. */
+  .leaflet-control-attribution {
+    padding: 4px 6px !important;
+    line-height: 1.6 !important;
+  }
+}
+
+/* ===========================================================================
+   Live state - a dispatch console should feel awake
+   =========================================================================== */
+@keyframes rg-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.82); }
+}
+.live-dot {
+  animation: rg-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes rg-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(400%); }
+}
+/* A slow light sweep across an active panel edge - the console breathing. */
+.sweep::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 25%;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-signal) 55%, transparent), transparent);
+  animation: rg-sweep 2.6s linear infinite;
+}
+
+@keyframes rg-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.rise { animation: rg-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .sweep::after { display: none; }
+}
+
+/* ===========================================================================
+   Map - tinted into the palette
+
+   OpenStreetMap's raster tiles are the only free, key-free source that still
+   serves real imagery (CARTO's anonymous basemaps now return a watermark).
+   Rather than embed the stock OSM look, the tiles are desaturated and tinted
+   so the map reads as part of this product rather than a third-party widget.
+   =========================================================================== */
 .leaflet-container {
-  font-family: "Inter", sans-serif !important;
-  border-radius: 1rem;
+  font-family: var(--font-body) !important;
+  background: var(--color-paper-sunk) !important;
+}
+
+.map-tinted .leaflet-tile-pane {
+  filter: grayscale(0.92) brightness(1.06) contrast(0.88) sepia(0.16) hue-rotate(232deg) saturate(1.25);
+}
+
+.map-ink .leaflet-tile-pane {
+  filter: grayscale(1) invert(0.93) brightness(0.92) contrast(1.08) sepia(0.35) hue-rotate(120deg) saturate(1.5);
+}
+
+.leaflet-container a.leaflet-popup-close-button { color: var(--color-text-muted); }
+
+.leaflet-popup-content-wrapper {
+  border-radius: var(--radius-sm) !important;
+  border: 1px solid var(--color-rule);
+  box-shadow: 0 6px 20px -6px rgba(1, 38, 34, 0.28);
+}
+.leaflet-popup-content { margin: 10px 12px !important; font-size: 12px; }
+
+.leaflet-control-attribution {
+  background: rgba(255, 255, 255, 0.82) !important;
+  font-size: 9px !important;
+  font-family: var(--font-mono) !important;
+  color: var(--color-text-faint) !important;
+}
+
+/* Map markers are drawn, not imported - keeps the icon language consistent. */
+.rg-marker {
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 10px;
+  color: #fff;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(1, 38, 34, 0.4);
+}
+
+@keyframes rg-ping {
+  0%   { transform: scale(0.6); opacity: 0.85; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+.rg-ping::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 99px;
+  background: currentColor;
+  animation: rg-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }

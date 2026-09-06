@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 
 from bus.event_bus import INCIDENT_REPORTED, bus
+from agents.triage import classify
 from models.schemas import (
     AccessibilityInputModality,
     AccessibilityProfile,
@@ -49,27 +50,15 @@ class AccessibilityAgent:
         """
         logger.info(f"AccessibilityAgent processing input via {request.modality.value}")
 
-        raw_content = str(request.raw_input).lower()
-        confidence = 0.95
+        raw_content = str(request.raw_input)
 
-        # 1. Classify emergency type and severity based on content heuristics
-        # (This mocks a real LLM/classifier step)
-        etype = EmergencyType.GENERAL
-        severity = 0.5
-        details = "General distress reported."
-
-        if any(w in raw_content for w in ["heart", "chest", "crushing", "cardiac"]):
-            etype = EmergencyType.CARDIAC
-            severity = 0.85
-            details = "Patient experiencing severe chest pain / possible cardiac event."
-        elif any(w in raw_content for w in ["crash", "accident", "blood", "broken"]):
-            etype = EmergencyType.TRAUMA
-            severity = 0.80
-            details = "Physical trauma / accident reported."
-        elif any(w in raw_content for w in ["face", "droop", "speech", "slurred", "arm"]):
-            etype = EmergencyType.STROKE
-            severity = 0.90
-            details = "Possible stroke symptoms observed."
+        # Classification is delegated to the triage model so the rules live in
+        # one auditable place (see agents/triage.py).
+        triage = classify(raw_content)
+        etype = triage.emergency_type
+        severity = triage.severity
+        details = triage.as_note()
+        confidence = triage.confidence
 
         # Special handling for SOS button — minimal input, maximum urgency
         if request.modality == AccessibilityInputModality.SOS_BUTTON:

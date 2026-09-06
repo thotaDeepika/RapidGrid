@@ -194,10 +194,29 @@ class DecisionFusionEngine:
 
         # Response time score: inverse of ETA, normalised
         # Lower ETA → higher score.  Max reasonable = 1800s (30 min).
+        #
+        # A failed route returns eta=0.0, which would otherwise score a PERFECT
+        # 1.0 — rewarding the engine for having no route at all.  Detect the
+        # degraded case explicitly and score it as the failure it is, so the
+        # dispatcher sees low confidence instead of false certainty.
         max_eta = 1800.0
-        response_time_score = round(
-            max(0.0, min(1.0, 1.0 - (route_result.eta / max_eta))), 3
+        route_failed = (
+            route_result.confidence <= 0.0
+            or route_result.eta <= 0.0
+            or len(route_result.coordinates) < 2
         )
+        if route_failed:
+            response_time_score = 0.0
+            logger.warning(
+                "Route computation DEGRADED for %s — scoring response_time=0.0 "
+                "(eta=%.1f, confidence=%.2f, points=%d)",
+                incident_id, route_result.eta, route_result.confidence,
+                len(route_result.coordinates),
+            )
+        else:
+            response_time_score = round(
+                max(0.0, min(1.0, 1.0 - (route_result.eta / max_eta))), 3
+            )
         route_confidence = route_result.confidence
 
         logger.info(
@@ -298,6 +317,8 @@ class DecisionFusionEngine:
             traffic_score=traffic_score,
             total_incidents=total_incidents,
             total_closures=total_closures,
+            ranked_hospitals=hospital_result.ranked_hospitals,
+            route_failed=route_failed,
         )
 
         # -- 9. Assemble response ---------------------------------------------
@@ -310,7 +331,9 @@ class DecisionFusionEngine:
             overall_confidence=min(overall_confidence, 1.0),
             emergency_type=request.emergency_type,
             severity=request.severity,
-            data_freshness=DataFreshness.LIVE,
+            data_freshness=(
+                DataFreshness.CACHED if route_failed else DataFreshness.LIVE
+            ),
             all_hospitals=hospital_result.ranked_hospitals,
             alternate_routes=route_result.alternate_routes,
         )
@@ -330,13 +353,6 @@ class DecisionFusionEngine:
             top_hospital.hospital_id, top_hospital.name,
         )
 
-        # Broadcast the final action plan for downstream agents (e.g., Communication)
-        await bus.publish(
-            topic=FUSION_COMPLETE,
-            payload=response.model_dump(mode="json"),
-            source_agent=AGENT_NAME,
-        )
-
         return response
 
     # -- helpers --------------------------------------------------------------
@@ -354,6 +370,8 @@ class DecisionFusionEngine:
         traffic_score: float,
         total_incidents: int,
         total_closures: int,
+        ranked_hospitals: list[Any] | None = None,
+        route_failed: bool = False,
     ) -> str:
         """
         Build a plain-language explanation of the fused decision.
@@ -404,6 +422,15 @@ class DecisionFusionEngine:
                 f"Traffic score: {traffic_score:.2f}/1.00."
             )
 
+        # Counterfactual: why the runner-up lost.
+        #
+        # A dispatcher overriding an AI recommendation needs to know what the
+        # trade-off was, not just that a number was higher. This states the
+        # decision as the choice it actually is: capability against minutes.
+        counterfactual = self._build_counterfactual(ranked_hospitals)
+        if counterfactual:
+            parts.append(counterfactual)
+
         # Fusion rationale
         factor_desc = " and ".join(
             f"{f.factor} ({f.weighted_score:.3f})" for f in top_two
@@ -413,7 +440,76 @@ class DecisionFusionEngine:
             f"Combined weighted score: {weighted_total:.3f}."
         )
 
+        if route_failed:
+            parts.append(
+                "WARNING: Live routing was unavailable for this plan. ETA and "
+                "response-time scoring are degraded - verify before dispatch."
+            )
+
         return " ".join(parts)
+
+    def _build_counterfactual(self, ranked: list[Any] | None) -> str:
+        """
+        Explain the winner against the runner-up on their largest divergence.
+
+        Returns an empty string when there is no meaningful alternative to
+        compare against.
+        """
+        if not ranked or len(ranked) < 2:
+            return ""
+
+        winner, runner_up = ranked[0], ranked[1]
+
+        win_factors = {b.factor: b for b in (winner.score_breakdown or [])}
+        run_factors = {b.factor: b for b in (runner_up.score_breakdown or [])}
+        shared = set(win_factors) & set(run_factors)
+        if not shared:
+            return ""
+
+        # The factor where the runner-up most outperforms the winner is what
+        # the recommendation is trading away.
+        conceded = max(
+            shared,
+            key=lambda f: run_factors[f].weighted_score - win_factors[f].weighted_score,
+        )
+        gained = max(
+            shared,
+            key=lambda f: win_factors[f].weighted_score - run_factors[f].weighted_score,
+        )
+
+        concede_gap = (
+            run_factors[conceded].weighted_score - win_factors[conceded].weighted_score
+        )
+        margin = winner.score - runner_up.score
+
+        detail = ""
+        if winner.road_eta_seconds and runner_up.road_eta_seconds:
+            delta_min = (runner_up.road_eta_seconds - winner.road_eta_seconds) / 60
+            if abs(delta_min) >= 0.5:
+                direction = "closer" if delta_min > 0 else "further"
+                detail = (
+                    f" By road, {winner.name} is {abs(delta_min):.1f} min {direction} "
+                    f"({winner.road_eta_seconds / 60:.1f} vs "
+                    f"{runner_up.road_eta_seconds / 60:.1f} min)."
+                )
+
+        if concede_gap <= 0.001:
+            return (
+                f"ALTERNATIVE CONSIDERED: {runner_up.name} "
+                f"(score {runner_up.score:.3f}) was not selected - "
+                f"{winner.name} scored higher on every factor.{detail}"
+            )
+
+        return (
+            f"ALTERNATIVE CONSIDERED: {runner_up.name} scores better on "
+            f"{run_factors[conceded].factor} "
+            f"({run_factors[conceded].raw_score:.2f} vs "
+            f"{win_factors[conceded].raw_score:.2f}), but {winner.name} wins on "
+            f"{win_factors[gained].factor} "
+            f"({win_factors[gained].raw_score:.2f} vs "
+            f"{run_factors[gained].raw_score:.2f}) and takes it by "
+            f"{margin:.3f}.{detail}"
+        )
 
 
 # ---------------------------------------------------------------------------

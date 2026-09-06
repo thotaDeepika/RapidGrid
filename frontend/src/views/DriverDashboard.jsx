@@ -1,358 +1,320 @@
-import LiveEmergencyChat from '../components/LiveEmergencyChat';
+/**
+ * Responder field app.
+ *
+ * Read from a cradle in a moving vehicle: one primary action per stage, large
+ * targets, and the next instruction always above the fold. Stage 1 runs the
+ * unit to the patient; stage 2 runs the patient to the receiving ER, and the
+ * destination can change mid-transport if the ER diverts.
+ */
+
 import React, { useState, useEffect } from 'react';
+import { Check, ChevronLeft, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Truck, Navigation, Phone, MessageSquare, MapPin, CheckCircle2, ArrowRight, ShieldAlert, Zap } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
+import MapOverlay from '../components/MapOverlay';
+import LiveEmergencyChat from '../components/LiveEmergencyChat';
+import {
+  Panel,
+  PanelHead,
+  Button,
+  Stat,
+  SeverityTag,
+  StatusTag,
+  ConnectionState,
+  Empty,
+  fmt,
+} from '../components/ui';
 
 export default function DriverDashboard() {
-  const { user } = useAuth();
-  const driverData = user?.role === 'driver' ? user.extraData : null;
-
-  const [activeDispatches, setActiveDispatches] = useState([]);
-  const [selectedIncident, setSelectedIncident] = useState(null);
-  const [isNavigating, setIsNavigating] = useState(false);
-  const [driverVehicleFilter, setDriverVehicleFilter] = useState('All');
-  const [driverStage, setDriverStage] = useState('pickup');
+  const { driverInfo } = useAuth();
+  const [dispatches, setDispatches] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [stage, setStage] = useState('pickup'); // pickup | transport
+  const [conn, setConn] = useState('ok');
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (driverData?.vehicleType) {
-      setDriverVehicleFilter(driverData.vehicleType);
-    }
-  }, [driverData?.vehicleType]);
-
-  useEffect(() => {
-    const fetchDispatches = async () => {
+    let cancelled = false;
+    const load = async () => {
       try {
         const res = await fetch('/api/driver/active');
-        if (!res.ok) return;
+        if (!res.ok) throw new Error();
         const data = await res.json();
-        const list = data.dispatches || [];
-        setActiveDispatches(list);
-
-        if (selectedIncident && isNavigating) {
-          const updated = list.find(i => i.incident_id === selectedIncident.incident_id);
-          if (updated) setSelectedIncident(updated);
+        if (!cancelled) {
+          setDispatches(data.dispatches ?? data.active ?? []);
+          setConn('ok');
         }
-      } catch (err) {}
+      } catch {
+        if (!cancelled) setConn('down');
+      }
     };
+    load();
+    const timer = setInterval(load, 2500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
 
-    fetchDispatches();
-    const interval = setInterval(fetchDispatches, 2500);
-    return () => clearInterval(interval);
-  }, [selectedIncident, isNavigating]);
+  const active = dispatches.find((d) => d.incident_id === activeId) ?? null;
+  const view = active?.citizen_view ?? {};
 
-  const handleArrived = async () => {
-    if (!selectedIncident) return;
-    try {
-      await fetch(`/api/incidents/${selectedIncident.incident_id}/arrived`, {
-        method: 'POST'
-      });
-      setIsNavigating(false);
-      setSelectedIncident(null);
-    } catch (err) {}
+  const patch = (data) => {
+    if (!data?.citizen_view) return;
+    setDispatches((prev) =>
+      prev.map((d) =>
+        d.incident_id === active.incident_id ? { ...d, citizen_view: data.citizen_view } : d,
+      ),
+    );
   };
 
-  if (!isNavigating) {
+  const arriveAtPatient = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/driver/arrived_pickup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_id: active.incident_id,
+          driver_id: driverInfo?.unitId ?? 'drv-11',
+        }),
+      });
+      patch(await res.json());
+      setStage('transport');
+    } catch {
+      setConn('down');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const completeHandover = async () => {
+    setBusy(true);
+    try {
+      await fetch(`/api/incidents/${active.incident_id}/arrived`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      setActiveId(null);
+      setStage('pickup');
+    } catch {
+      setConn('down');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const divertTo = async (hospitalName) => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/driver/change_hospital', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          incident_id: active.incident_id,
+          hospital_name: hospitalName,
+        }),
+      });
+      patch(await res.json());
+    } catch {
+      setConn('down');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* ---- Queue ----------------------------------------------------------- */
+  if (!active) {
     return (
-      <div className="flex flex-col min-h-[calc(100vh-80px)] p-6 bg-[#ece5f0] text-[#012622] gap-6 max-w-6xl mx-auto font-body">
-        <div className="bg-white p-6 rounded-3xl border border-[#dcd3e3] shadow-elevation-md flex flex-wrap justify-between items-center gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-[#012622] text-[#e98a15] flex items-center justify-center shadow-sm">
-              <Truck size={26} />
-            </div>
-            <div>
-              <h1 className="font-display text-xl font-extrabold text-[#012622]">Paramedic First Responder Dispatch</h1>
-              <p className="text-xs text-[#003b36]">Active Emergency Dispatch Queue & Station Hub Telemetry</p>
-            </div>
+      <div className="mx-auto w-full max-w-[560px] px-4 py-5 lg:max-w-[880px]">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h1 className="font-display text-[20px] font-extrabold leading-tight text-text">
+              Assigned calls
+            </h1>
+            <p className="mt-1 t-meta uppercase tracking-[0.1em] text-text-faint">
+              {driverInfo?.unitId ?? 'Unit'} · {driverInfo?.hubName ?? 'Base'}
+            </p>
           </div>
-          <div className="px-4 py-2 bg-[#fdf3e7] border border-[#e98a15]/50 text-[#e98a15] rounded-full font-mono text-xs font-bold flex items-center gap-2 shadow-sm">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#e98a15] opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#e98a15]"></span>
-            </span>
-            STATUS: STANDBY READY
-          </div>
+          <ConnectionState status={conn} />
         </div>
 
-        <div className="flex gap-2.5 overflow-x-auto pb-1">
-          {['All', 'Ambulance', 'Fire Engine', 'Police Cruiser', 'Disaster Rescue'].map(v => (
-            <button
-              key={v}
-              onClick={() => setDriverVehicleFilter(v)}
-              className={`px-4 py-2.5 rounded-full text-xs font-bold font-mono transition-all flex items-center gap-2 border ${
-                driverVehicleFilter === v
-                  ? 'bg-[#012622] text-[#e98a15] border-[#012622] shadow-elevation-sm'
-                  : 'bg-white text-[#003b36] border-[#dcd3e3] hover:border-[#012622]/40 hover:bg-[#e6f0ef]'
-              }`}
-            >
-              {v === 'Ambulance' && <Truck size={14} />}
-              {v === 'Fire Engine' && <ShieldAlert size={14} className="text-[#e98a15]" />}
-              <span>{v === 'All' ? 'All Emergency Units' : v}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-xs font-mono font-bold text-[#003b36] uppercase tracking-wider">
-            Available Dispatch Calls ({activeDispatches.filter(i => driverVehicleFilter === 'All' || (i.vehicle_required || 'Ambulance') === driverVehicleFilter || (driverVehicleFilter === 'Ambulance' && i.include_ambulance_backup)).length})
-          </h2>
-
-          {activeDispatches.filter(i => driverVehicleFilter === 'All' || (i.vehicle_required || 'Ambulance') === driverVehicleFilter || (driverVehicleFilter === 'Ambulance' && i.include_ambulance_backup)).length === 0 ? (
-            <div className="bg-white p-12 rounded-3xl text-center border border-[#dcd3e3] shadow-elevation-sm space-y-3">
-              <ShieldAlert size={40} className="mx-auto text-[#012622]/50" />
-              <div className="font-display font-bold text-lg text-[#012622]">No Active Calls for {driverVehicleFilter}</div>
-              <p className="text-xs text-[#003b36] max-w-sm mx-auto">No pending emergency dispatches for this unit type at the moment. Standing by for incident triggers.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {activeDispatches.filter(i => driverVehicleFilter === 'All' || (i.vehicle_required || 'Ambulance') === driverVehicleFilter || (driverVehicleFilter === 'Ambulance' && i.include_ambulance_backup)).map((inc) => (
-                <div 
-                  key={inc.incident_id}
-                  className="bg-white p-6 rounded-3xl border border-[#dcd3e3] hover:border-[#012622] transition-all space-y-4 flex flex-col justify-between shadow-elevation-sm hover:shadow-elevation-md"
-                >
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-start">
-                      <span className="bg-[#012622] text-[#e98a15] font-mono font-bold text-xs px-3 py-1 rounded-full border border-[#012622]">
-                        {inc.incident_id}
-                      </span>
-                      <span className="bg-[#fdf3e7] text-[#e98a15] font-mono text-xs px-3 py-1 rounded-full font-bold uppercase border border-[#e98a15]/40">
-                        REQ: {inc.vehicle_required || 'Ambulance'}
-                      </span>
-                    </div>
-
-                    <div className="text-base font-bold font-display text-[#012622]">
-                      Hospital ER Destination: {inc.hospital_name}
-                    </div>
-
-                    <p className="text-xs text-[#003b36] italic bg-[#ece5f0] p-3 rounded-2xl border border-[#dcd3e3]">
-                      "{inc.details}"
-                    </p>
-
-                    <div className="flex justify-between text-xs font-mono text-[#003b36] pt-2 border-t border-[#dcd3e3]">
-                      <span>Citizen: {inc.citizen_name || 'Patient'}</span>
-                      <span className="font-bold text-[#e98a15]">ETA: {inc.eta_minutes} mins</span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      setSelectedIncident(inc);
-                      setIsNavigating(true);
-                    }}
-                    className="w-full bg-[#012622] hover:bg-[#003b36] text-white font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-all text-xs font-mono shadow-elevation-sm active:scale-95"
-                  >
-                    ACCEPT & START DISPATCH NAVIGATION <ArrowRight size={16} className="text-[#e98a15]" />
-                  </button>
+        {dispatches.length === 0 ? (
+          <Panel>
+            <Empty
+              title="No calls assigned"
+              hint="When dispatch approves a plan for your service and hub, it appears here."
+            />
+          </Panel>
+        ) : (
+          <div className="space-y-2">
+            {dispatches.map((d) => (
+              <button
+                key={d.incident_id}
+                onClick={() => {
+                  setActiveId(d.incident_id);
+                  setStage('pickup');
+                }}
+                className="block w-full rounded-md border border-rule bg-paper p-4 text-left transition-colors hover:border-signal"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[12px] font-bold text-text">
+                    {d.incident_id}
+                  </span>
+                  <StatusTag status={d.status} />
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+                <div className="mt-1.5 text-[14px] font-bold capitalize text-text">
+                  {d.emergency_type ?? 'Emergency'}
+                </div>
+                <p className="mt-0.5 line-clamp-2 text-[12px] leading-relaxed text-text-muted">
+                  {d.citizen_text}
+                </p>
+                <div className="mt-2.5 flex items-center justify-between gap-2">
+                  <SeverityTag severity={d.severity ?? 0} />
+                  <span className="t-tag text-signal">
+                    {d.citizen_view?.phase1_eta_minutes ?? '--'} min out
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
-  const origin = selectedIncident?.citizen_view?.origin || selectedIncident?.origin || { lat: 12.9756, lng: 77.6068 };
-  const hospLoc = selectedIncident?.citizen_view?.hospital_location || selectedIncident?.hospital_location || { lat: 13.0473, lng: 77.5908 };
+  /* ---- Navigating ------------------------------------------------------ */
+  const heading =
+    stage === 'pickup'
+      ? { eyebrow: 'Stage 1 of 2', title: 'Drive to the patient' }
+      : { eyebrow: 'Stage 2 of 2', title: 'Transport to hospital' };
 
-  const rawCoords = (driverStage === 'pickup' ? selectedIncident?.citizen_view?.phase1_route_coordinates : null)
-    || selectedIncident?.route_coordinates 
-    || selectedIncident?.citizen_view?.route_coordinates;
-
-  const routeCoords = (rawCoords && rawCoords.length > 0)
-    ? rawCoords
-    : [origin, hospLoc];
-
-  const etaMinutes = selectedIncident?.citizen_view?.eta_minutes || selectedIncident?.eta_minutes || 7;
+  const destination =
+    stage === 'pickup'
+      ? { label: 'Patient location', name: active.citizen_name ?? 'Reported location' }
+      : { label: 'Receiving ER', name: view.hospital_name ?? 'Destination' };
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-80px)] p-6 bg-[#ece5f0] text-[#012622] gap-6 max-w-7xl mx-auto font-body">
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-1 flex flex-col gap-4">
-          <div className="bg-white p-5 rounded-3xl border border-[#dcd3e3] shadow-elevation-md flex justify-between items-center">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-[#012622] text-[#e98a15] flex items-center justify-center shadow-md">
-                <Navigation size={24} />
-              </div>
-              <div>
-                <span className="text-[11px] font-mono font-bold text-[#e98a15] uppercase tracking-wider block">
-                  {driverStage === 'pickup' ? 'STAGE 1: EN ROUTE TO PATIENT PICKUP SPOT' : 'STAGE 2: PATIENT PICKED UP — EN ROUTE TO ER'}
-                </span>
-                <h2 className="font-display text-lg font-bold text-[#012622]">{selectedIncident.incident_id}</h2>
-              </div>
-            </div>
+    <div className="mx-auto w-full max-w-[560px] space-y-3 px-4 py-4 lg:max-w-[880px]">
+      <button
+        onClick={() => setActiveId(null)}
+        className="tap inline-flex items-center gap-1 py-1 t-tag text-text-muted hover:text-text"
+      >
+        <ChevronLeft size={14} /> All calls
+      </button>
 
-            <div className="text-right">
-              <div className="font-display font-extrabold text-3xl text-[#012622]">{etaMinutes}m</div>
-              <span className="text-[10px] font-mono uppercase text-[#003b36] font-bold">ETA Arrival</span>
-            </div>
+      {/* The next instruction, always first. */}
+      <Panel ink>
+        <div className="px-4 py-4">
+          <div className="eyebrow eyebrow-ink">{heading.eyebrow}</div>
+          <h1 className="mt-1.5 font-display text-[clamp(20px,5vw,26px)] font-extrabold leading-tight text-on-ink">
+            {heading.title}
+          </h1>
+          <div className="mt-3 border-t border-rule-ink pt-3">
+            <div className="eyebrow eyebrow-ink">{destination.label}</div>
+            <p className="mt-1 text-[15px] font-semibold leading-snug text-on-ink">
+              {destination.name}
+            </p>
           </div>
-
-          <div className="relative h-[380px] rounded-3xl overflow-hidden border border-[#dcd3e3] shadow-elevation-md bg-white">
-            <MapContainer center={[origin.lat, origin.lng]} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false} attributionControl={false}>
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" />
-              <Marker position={[origin.lat, origin.lng]} />
-              <Marker position={[hospLoc.lat, hospLoc.lng]} />
-              {selectedIncident?.citizen_view?.phase1_hub && (
-                <Marker position={[selectedIncident.citizen_view.phase1_hub.lat, selectedIncident.citizen_view.phase1_hub.lng]} />
-              )}
-              {selectedIncident?.citizen_view?.phase1_route_coordinates && selectedIncident.citizen_view.phase1_route_coordinates.length > 0 && (
-                <Polyline 
-                  positions={selectedIncident.citizen_view.phase1_route_coordinates.map(c => [c.lat, c.lng])} 
-                  pathOptions={{ color: '#e98a15', weight: 4, opacity: 0.9, dashArray: '8, 8' }} 
-                />
-              )}
-              {routeCoords.length > 0 && (
-                <Polyline 
-                  positions={routeCoords.map(c => [c.lat, c.lng])} 
-                  pathOptions={{ color: '#012622', weight: 5, opacity: 0.9 }} 
-                />
-              )}
-            </MapContainer>
-
-            <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm z-10 border border-[#dcd3e3] text-xs font-mono font-bold">
-              <span className="w-2.5 h-2.5 bg-[#e98a15] rounded-full animate-pulse"></span>
-              <span>LIVE TURN-BY-TURN NAV</span>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <button 
-              onClick={() => setIsNavigating(false)}
-              className="px-5 py-3.5 bg-[#ece5f0] hover:bg-[#dcd3e3] text-[#012622] rounded-2xl font-bold text-xs transition-all border border-[#dcd3e3]"
-            >
-              Back to Queue
-            </button>
-            {driverStage === 'pickup' ? (
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/driver/arrived_pickup', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ incident_id: selectedIncident.incident_id, driver_id: 'drv-11' })
-                    });
-                    const data = await res.json();
-                    setDriverStage('hospital');
-                    if (data.citizen_view) {
-                      setSelectedIncident(prev => ({ ...prev, citizen_view: data.citizen_view, route_coordinates: data.citizen_view.route_coordinates }));
-                    }
-                  } catch (err) {}
-                }}
-                className="flex-1 bg-[#012622] hover:bg-[#003b36] text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-elevation-md transition-all active:scale-[0.98]"
-              >
-                <CheckCircle2 size={20} className="text-[#e98a15]" /> MARK ARRIVED AT PATIENT SPOT
-              </button>
-            ) : (
-              <button
-                onClick={handleArrived}
-                className="flex-1 bg-[#012622] hover:bg-black text-white font-bold text-sm py-3.5 rounded-2xl flex items-center justify-center gap-2 shadow-elevation-md transition-all active:scale-[0.98]"
-              >
-                <CheckCircle2 size={20} className="text-[#e98a15]" /> {selectedIncident?.vehicle_required === 'Fire Engine' ? 'MARK ARRIVED AT FIRE SCENE' : selectedIncident?.vehicle_required === 'Police Cruiser' ? 'MARK ARRIVED ON SCENE' : 'MARK ARRIVED AT DESTINATION HOSPITAL'}
-              </button>
+          <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-4 border-t border-rule-ink pt-3.5 sm:gap-x-8">
+            <Stat
+              ink
+              label="Time to destination"
+              value={stage === 'pickup' ? (view.phase1_eta_minutes ?? '--') : (view.eta_minutes ?? '--')}
+              unit="min"
+              tone="signal"
+            />
+            {stage === 'transport' && (
+              <Stat ink label="Distance" value={fmt.km(view.distance_meters)} unit="km" />
             )}
+            <Stat ink label="Call" value={active.incident_id} tone="muted" />
           </div>
         </div>
+      </Panel>
 
-        <div className="w-full lg:w-96 flex flex-col gap-5">
-          <div className="bg-white p-6 rounded-3xl border border-[#dcd3e3] shadow-elevation-md space-y-4">
-            <h3 className="font-display font-bold text-xs uppercase text-[#003b36] tracking-wider flex items-center gap-2">
-              <MapPin size={16} className="text-[#012622]" /> Destination Hospital Controls
-            </h3>
-            
-            <div className="space-y-2">
-              <div className="bg-[#fdf3e7] p-3.5 rounded-2xl border border-[#e98a15]/30 space-y-1">
-                <div className="text-[10px] font-mono text-[#e98a15] font-bold uppercase flex items-center gap-1">
-                  <Zap size={12} className="text-[#e98a15]" /> AI OPTIMAL HOSPITAL ASSIGNED:
-                </div>
-                <div className="text-xs font-bold text-[#012622] font-mono">
-                  {selectedIncident?.citizen_view?.hospital_name || selectedIncident.hospital_name}
-                </div>
-              </div>
+      <Panel className="overflow-hidden">
+        <MapOverlay
+          height="min(52vh, 440px)"
+          routeCoordinates={view.route_coordinates}
+          phase1Coordinates={view.phase1_route_coordinates}
+          origin={view.origin ?? active.location}
+          hospital={
+            view.hospital_location
+              ? { ...view.hospital_location, name: view.hospital_name }
+              : null
+          }
+          hub={view.phase1_hub}
+          activePhase={stage === 'pickup' ? 1 : 2}
+          className="!rounded-none !border-0"
+        />
+      </Panel>
 
-              <label className="text-[10px] font-mono text-[#003b36] font-bold block uppercase pt-1">
-                Uber-Style Driver Hospital Reroute:
-              </label>
-              <select
-                value={selectedIncident?.citizen_view?.hospital_name || selectedIncident.hospital_name}
-                onChange={async (e) => {
-                  const newHosp = e.target.value;
-                  try {
-                    const res = await fetch('/api/driver/change_hospital', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ incident_id: selectedIncident.incident_id, hospital_name: newHosp })
-                    });
-                    const data = await res.json();
-                    if (data.citizen_view) {
-                      setSelectedIncident(prev => ({
-                        ...prev,
-                        hospital_name: newHosp,
-                        citizen_view: data.citizen_view,
-                        route_coordinates: data.citizen_view.route_coordinates,
-                        eta_minutes: data.citizen_view.eta_minutes
-                      }));
-                    }
-                  } catch (err) {}
-                }}
-                className="w-full bg-[#ece5f0] border border-[#dcd3e3] text-[#012622] text-xs font-mono font-bold p-3 rounded-2xl focus:outline-none focus:border-[#012622] shadow-sm"
-              >
-                {[
-                  'Aster CMI Hospital (Hebbal)',
-                  'MEDSTAR Speciality Hospital',
-                  'Manipal Hospital (Hebbal)',
-                  'Victoria Hospital',
-                  'Fortis Hospital (Cunningham Rd)',
-                  'Apollo Hospital (Seshadripuram)'
-                ].map(h => (
-                  <option key={h} value={h}>{h}</option>
-                ))}
-              </select>
-            </div>
-            
-            <button 
-              onClick={() => window.location.href = "tel:112"}
-              className="w-full bg-[#012622] hover:bg-[#003b36] text-white font-bold py-3 rounded-2xl flex items-center justify-center gap-2 transition-all text-xs"
-            >
-              <Phone size={15} className="text-[#e98a15]" /> Call Hospital ER Desk
-            </button>
-          </div>
-
-          <div className="bg-white p-6 rounded-3xl border border-[#dcd3e3] shadow-elevation-md space-y-3">
-            <h3 className="font-display font-bold text-xs uppercase text-[#003b36] tracking-wider flex items-center gap-2">
-              <ShieldAlert size={16} className="text-[#012622]" /> Patient & Case Summary
-            </h3>
-            <div className="bg-[#ece5f0] p-4 rounded-2xl border border-[#dcd3e3] space-y-3 text-xs">
-              <div className="flex justify-between">
-                <span className="text-[#003b36]">Emergency Type:</span>
-                <strong className="text-[#012622] uppercase">{selectedIncident.emergency_type}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[#003b36]">Severity Level:</span>
-                <strong className="text-[#e98a15]">{Math.round(selectedIncident.severity * 100)}%</strong>
-              </div>
-              <div className="pt-2 border-t border-[#dcd3e3]">
-                <span className="text-[#003b36] block mb-1">Citizen Raw Report:</span>
-                <p className="italic text-[#012622] bg-white p-3 rounded-xl border border-[#dcd3e3]">
-                  "{selectedIncident.details}"
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {selectedIncident?.incident_id && (
-        <div className="w-full pt-2">
-          <LiveEmergencyChat
-            incidentId={selectedIncident.incident_id}
-            senderRole="driver"
-            senderName="Paramedic Unit AMB-04"
-            targetPhone={selectedIncident.citizen_phone || '+919876543210'}
-          />
-        </div>
+      {stage === 'pickup' ? (
+        <Button onClick={arriveAtPatient} disabled={busy} size="lg" className="w-full">
+          <Check size={17} />
+          {busy ? 'Confirming…' : 'I have reached the patient'}
+        </Button>
+      ) : (
+        <Button
+          variant="ink"
+          onClick={completeHandover}
+          disabled={busy}
+          size="lg"
+          className="w-full"
+        >
+          <Check size={17} />
+          {busy ? 'Confirming…' : 'Patient handed over at ER'}
+        </Button>
       )}
+
+      {/* Divert: only meaningful once the patient is aboard. */}
+      {stage === 'transport' && active.action_plan?.all_hospitals?.length > 0 && (
+        <Panel>
+          <PanelHead label="Change destination" />
+          <div className="p-2.5">
+            <p className="px-1.5 pb-2 text-[11px] leading-relaxed text-text-muted">
+              If the assigned ER diverts, pick another. The route and the caller's screen update
+              immediately.
+            </p>
+            <div className="space-y-1.5">
+              {active.action_plan.all_hospitals.slice(0, 4).map((h, i) => {
+                const current = view.hospital_name === h.name;
+                return (
+                  <button
+                    key={h.hospital_id ?? i}
+                    onClick={() => divertTo(h.name)}
+                    disabled={busy || current}
+                    className={`flex w-full items-center justify-between gap-3 rounded-sm border px-3 py-2.5 text-left transition-colors ${
+                      current
+                        ? 'border-signal bg-signal-wash'
+                        : 'border-rule bg-paper hover:border-signal disabled:opacity-50'
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12.5px] font-semibold text-text">
+                        {h.name}
+                      </span>
+                      <span className="mt-1 block t-meta text-text-faint">
+                        {h.road_eta_seconds ? `${fmt.minutes(h.road_eta_seconds)} min by road` : '—'}
+                      </span>
+                    </span>
+                    {current ? (
+                      <span className="shrink-0 t-tag text-signal-hover">
+                        Current
+                      </span>
+                    ) : (
+                      <Building2 size={15} className="shrink-0 text-text-faint" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      <LiveEmergencyChat
+        incidentId={active.incident_id}
+        senderRole="driver"
+        senderName={driverInfo?.unitId ?? 'Responder'}
+        height="min(32vh, 260px)"
+      />
     </div>
   );
 }

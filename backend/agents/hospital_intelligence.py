@@ -4,12 +4,15 @@ Hospital Intelligence Agent for GeoAgentic (Live Overpass API).
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import hashlib
 import urllib.parse
-import httpx
+from pathlib import Path
 from typing import Any
+
+import httpx
 
 from bus.event_bus import HOSPITAL_RANKED, bus
 from models.schemas import (
@@ -26,9 +29,70 @@ logger = logging.getLogger("geoagentic.agent.hospital")
 
 AGENT_NAME = "hospital_intelligence"
 
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_CAPABILITIES_PATH = _DATA_DIR / "hospital_capabilities.json"
+
+# Emergency categories that require a facility willing to receive
+# undifferentiated ambulance arrivals. An oncology or maternity-only centre is
+# not a valid destination for a cardiac arrest, however close it happens to be.
+_RECEIVING_REQUIRED = {"cardiac", "trauma", "stroke", "general"}
+
+# OpenStreetMap tags a great many single-speciality outpatient facilities as
+# amenity=hospital: dental surgeries, eye clinics, diagnostic labs, fertility
+# and dialysis centres. None of them can receive an emergency ambulance.
+# Matched against the facility name when no curated profile exists.
+_NON_EMERGENCY_KEYWORDS = (
+    "dental", "dentist", "orthodont", "eye ", "eye_", "ophthal", "vision",
+    "ayurved", "homeo", "homoeo", "unani", "siddha", "naturopath",
+    "diagnostic", "laborator", " lab", "scan centre", "scan center", "imaging",
+    "physiothe", "fertility", "ivf", "test tube", "dialysis", "skin ", "derma",
+    "cosmetic", "aesthetic", "hair ", "veterinar", "pet ", "animal",
+    "psychiatr", "de-addiction", "deaddiction", "rehab", "wellness", "spa",
+    "polyclinic", "pharmacy", "chemist", "optical", "hearing", "speech",
+)
+
+
+def _looks_non_emergency(name: str) -> bool:
+    """Heuristic screen for facilities that cannot receive an ambulance."""
+    lowered = f" {name.lower()} "
+    return any(k in lowered for k in _NON_EMERGENCY_KEYWORDS)
+
+
+def _normalise_name(name: str) -> str:
+    """Canonical form for duplicate detection."""
+    cleaned = "".join(c if c.isalnum() or c.isspace() else " " for c in name.lower())
+    drop = {"hospital", "hospitals", "the", "and", "of", "a", "an",
+            "multispeciality", "multi", "speciality", "specialty", "centre",
+            "center", "clinic", "care", "health", "institute", "medical"}
+    return " ".join(t for t in cleaned.split() if t not in drop)
+
 _EARTH_R = 6_371_000
 _MAX_TRAVEL_TIME_S = 1800.0
 _AVG_SPEED_MPS = 8.33
+
+# Specialty-centre bypass thresholds.
+#
+# Real EMS protocols do not send a STEMI to the nearest emergency room; they
+# bypass it for a facility with a 24x7 cath lab, accepting extra transport
+# time. Same for major trauma (trauma centre) and stroke (thrombolysis unit).
+# Without this gate, proximity outranks capability and the system recommends
+# a general hospital for a cardiac arrest simply because it is 3km closer.
+_CAPABILITY_GATE: dict[str, tuple[str, float]] = {
+    "cardiac": ("cardiology", 0.70),
+    "trauma":  ("trauma_centre", 0.70),
+    "stroke":  ("neurology", 0.70),
+}
+# Only apply the gate while enough qualifying centres remain to choose from.
+_MIN_GATED_CANDIDATES = 3
+
+# How many shortlisted hospitals get a real road-network ETA (stage 2).
+_ROAD_ETA_SHORTLIST = 8
+
+# Overpass is a free, community-funded service that rate-limits (429) and is
+# slow (5-10s). Hospital locations do not change during a demo, so cache the
+# enriched result per coarse location. 3 decimal places ~ 110m.
+_HOSPITAL_CACHE_TTL_S = 900.0
+_HOSPITAL_CACHE_PRECISION = 2
 
 WEIGHT_TABLES: dict[str, list[tuple[str, float]]] = {
     "general": [
@@ -87,12 +151,74 @@ def _travel_time_score(distance_m: float) -> float:
 
 class HospitalIntelligenceAgent:
     def __init__(self) -> None:
-        self._hospitals = [] # Cached list of fetched hospitals
+        self._hospitals = []  # Cached list of fetched hospitals
+        self._capabilities: dict[str, Any] | None = None
+        self._capabilities_by_name: dict[str, Any] = {}
+        self._fetch_cache: dict[tuple, tuple[float, list[dict[str, Any]]]] = {}
     
     def _deterministic_float(self, string_id: str, seed: str) -> float:
-        """Returns a stable float between 0.0 and 1.0 based on a string hash."""
+        """
+        Stable pseudo-random float in [0, 1] derived from a hospital id.
+
+        Used ONLY for facilities with no curated profile, and for live
+        availability figures that no real feed provides. Anything derived from
+        this is tagged provenance="simulated" and must be labelled as such in
+        the UI — never presented as observed fact.
+        """
         h = hashlib.md5(f"{string_id}_{seed}".encode()).hexdigest()
         return int(h[:8], 16) / 0xFFFFFFFF
+
+    def _load_capabilities(self) -> dict[str, Any]:
+        """Load (and memoise) the curated capability table."""
+        if self._capabilities is None:
+            try:
+                with open(_CAPABILITIES_PATH, encoding="utf-8") as f:
+                    payload = json.load(f)
+                self._capabilities = payload.get("hospitals", {})
+                # Secondary index so Overpass results, which carry OSM ids
+                # rather than our blr-* ids, can still match on name.
+                self._capabilities_by_name = {
+                    entry["name"].lower(): entry
+                    for entry in self._capabilities.values()
+                }
+                logger.info(
+                    "Loaded curated capability profiles for %d hospitals",
+                    len(self._capabilities),
+                )
+            except Exception:
+                logger.exception("Could not load %s", _CAPABILITIES_PATH.name)
+                self._capabilities = {}
+                self._capabilities_by_name = {}
+        return self._capabilities
+
+    def _match_curated(self, hid: str, name: str) -> dict[str, Any] | None:
+        """Resolve a hospital to its curated profile by id, then by name."""
+        curated = self._load_capabilities()
+        if hid in curated:
+            return curated[hid]
+
+        lowered = name.lower().strip()
+        by_name = self._capabilities_by_name
+        if lowered in by_name:
+            return by_name[lowered]
+
+        # Overpass names are noisy ("Manipal Hospital" vs our fuller title).
+        # Require a distinctive token overlap rather than any substring, so
+        # "Lakshmi Hospital" cannot inherit "Manipal Hospital"'s profile.
+        stop = {"hospital", "hospitals", "the", "and", "of", "institute",
+                "medical", "centre", "center", "clinic", "multispeciality",
+                "multi", "speciality", "specialty", "care", "health"}
+        tokens = {t for t in lowered.replace(",", " ").split() if t not in stop and len(t) > 3}
+        if not tokens:
+            return None
+        for cand_name, entry in by_name.items():
+            cand_tokens = {
+                t for t in cand_name.replace(",", " ").replace("(", " ").replace(")", " ").split()
+                if t not in stop and len(t) > 3
+            }
+            if tokens & cand_tokens:
+                return entry
+        return None
         
     # Real Bangalore hospitals as a reliable seed list — used when Overpass is slow/unavailable
     BANGALORE_HOSPITALS_SEED = [
@@ -130,6 +256,19 @@ class HospitalIntelligenceAgent:
 
     async def _fetch_live_hospitals(self, lat: float, lng: float, radius_m: int = 25000) -> list[dict[str, Any]]:
         """Queries Overpass API for real hospitals in Bangalore. Falls back to seed list if unavailable."""
+        import time as _time
+
+        cache_key = (
+            round(lat, _HOSPITAL_CACHE_PRECISION),
+            round(lng, _HOSPITAL_CACHE_PRECISION),
+            radius_m,
+        )
+        hit = self._fetch_cache.get(cache_key)
+        if hit and _time.monotonic() - hit[0] < _HOSPITAL_CACHE_TTL_S:
+            self._hospitals = hit[1]
+            logger.info("Hospital catalogue cache HIT (%d facilities)", len(hit[1]))
+            return hit[1]
+
         query = f"""
         [out:json][timeout:15];
         (
@@ -180,35 +319,135 @@ class HospitalIntelligenceAgent:
         if not live_hospitals:
             live_hospitals = list(self.BANGALORE_HOSPITALS_SEED)
 
-        # Enrich each hospital with deterministic capability scores
+        # ------------------------------------------------------------------
+        # Enrichment. Two clearly separated provenance tiers:
+        #
+        #   CURATED   - facility capability from the reviewed table. Real,
+        #               stable, and what actually drives clinical routing.
+        #   SIMULATED - live free-bed / blood-unit counts. No hospital HMIS
+        #               feed exists, so these are generated deterministically
+        #               and tagged so the UI can label them honestly.
+        # ------------------------------------------------------------------
         hospitals = []
+        curated_hits = 0
+
         for h in live_hospitals:
             hid = h["id"]
-            base_quality = 0.4 + (self._deterministic_float(hid, "quality") * 0.6)
-            caps = {
-                "emergency_resource": min(1.0, base_quality * (0.8 + self._deterministic_float(hid, "er") * 0.4)),
-                "specialist":         min(1.0, base_quality * (0.7 + self._deterministic_float(hid, "spec") * 0.5)),
-                "blood_availability": min(1.0, base_quality * (0.6 + self._deterministic_float(hid, "blood") * 0.6)),
-                "cardiology":         min(1.0, base_quality * (0.3 + self._deterministic_float(hid, "cardio") * 0.9)),
-                "trauma_centre":      min(1.0, base_quality * (0.2 + self._deterministic_float(hid, "trauma") * 1.0)),
-                "surgical_capacity":  min(1.0, base_quality * (0.5 + self._deterministic_float(hid, "surg") * 0.7)),
-                "neurology":          min(1.0, base_quality * (0.3 + self._deterministic_float(hid, "neuro") * 0.8)),
-                "ct_imaging":         min(1.0, base_quality * (0.6 + self._deterministic_float(hid, "ct") * 0.6)),
-            }
-            beds_total = int(50 + self._deterministic_float(hid, "beds") * 500)
-            beds_available = int(beds_total * (0.05 + self._deterministic_float(hid, "avail") * 0.25))
+            profile = self._match_curated(hid, h["name"])
+
+            if profile:
+                curated_hits += 1
+                caps = dict(profile["capabilities"])
+                beds_total = profile["beds_total"]
+                icu_total = profile["icu_total"]
+                specialists = list(profile["specialties"])
+                capability_provenance = "curated"
+                emergency_receiving = profile.get("emergency_receiving", True)
+                facility_type = profile.get("type", "unknown")
+                display_name = profile["name"]
+                note = profile.get("note", "")
+            else:
+                # No curated profile: a small clinic or an unrecognised Overpass
+                # entry. Model conservatively - an unknown facility should not
+                # outrank a verified tertiary centre - and mark it simulated.
+                base = 0.25 + (self._deterministic_float(hid, "quality") * 0.35)
+                caps = {
+                    "emergency_resource": round(base * 0.9, 3),
+                    "specialist":         round(base * 0.7, 3),
+                    "blood_availability": round(base * 0.7, 3),
+                    "cardiology":         round(base * 0.5, 3),
+                    "trauma_centre":      round(base * 0.5, 3),
+                    "surgical_capacity":  round(base * 0.6, 3),
+                    "neurology":          round(base * 0.45, 3),
+                    "ct_imaging":         round(base * 0.6, 3),
+                }
+                beds_total = int(30 + self._deterministic_float(hid, "beds") * 120)
+                icu_total = max(2, int(beds_total * 0.10))
+                specialists = ["Emergency Medicine"]
+                capability_provenance = "simulated"
+                emergency_receiving = True
+                facility_type = "unclassified"
+                display_name = h["name"]
+                note = (
+                    "No curated capability profile for this facility - "
+                    "conservative modelled estimate."
+                )
+
+            # Live occupancy has no data source anywhere. Always simulated.
+            occupancy = 0.55 + self._deterministic_float(hid, "avail") * 0.35
+            beds_available = max(0, int(beds_total * (1.0 - occupancy)))
+            icu_available = max(0, int(icu_total * (1.0 - occupancy)))
+
             hospitals.append({
-                "id": hid, "name": h["name"], "lat": h["lat"], "lng": h["lng"],
-                "icu_available": max(1, int(beds_available * 0.2)),
+                "id": hid,
+                "name": display_name,
+                "lat": h["lat"], "lng": h["lng"],
+                "type": facility_type,
+                "emergency_receiving": emergency_receiving,
+                "icu_available": icu_available,
+                "icu_total": icu_total,
                 "beds_total": beds_total,
                 "beds_available": beds_available,
-                "specialists": ["Emergency Medicine", "General Surgery", "Cardiology"]
-                    if caps["cardiology"] > 0.6 else ["Emergency Medicine"],
-                "capabilities": caps
+                "specialists": specialists,
+                "capabilities": caps,
+                "capability_provenance": capability_provenance,
+                "availability_provenance": "simulated",
+                "note": note,
             })
 
+        hospitals = self._deduplicate(hospitals)
+
+        logger.info(
+            "Enriched %d hospitals: %d curated profiles, %d modelled",
+            len(hospitals), curated_hits, len(hospitals) - curated_hits,
+        )
+        self._fetch_cache[cache_key] = (_time.monotonic(), hospitals)
         self._hospitals = hospitals
         return hospitals
+
+    def _deduplicate(self, hospitals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """
+        Collapse the same physical facility appearing more than once.
+
+        OSM commonly maps a hospital as both a POI node and a building way, and
+        our seed list can add a third copy. Without this, one hospital occupies
+        several slots in a five-item shortlist.
+
+        Two rules:
+          1. Entries resolving to the same curated profile are the same place.
+          2. Otherwise, identical normalised names within 500 m are the same place.
+        Curated entries always win over modelled ones.
+        """
+        by_curated: dict[str, dict[str, Any]] = {}
+        others: list[dict[str, Any]] = []
+
+        for h in hospitals:
+            if h["capability_provenance"] == "curated":
+                key = h["name"]
+                existing = by_curated.get(key)
+                if existing is None:
+                    by_curated[key] = h
+                continue
+            others.append(h)
+
+        deduped: list[dict[str, Any]] = list(by_curated.values())
+        curated_names = {_normalise_name(n) for n in by_curated}
+
+        for h in others:
+            norm = _normalise_name(h["name"])
+            if not norm or norm in curated_names:
+                continue
+            duplicate = False
+            for kept in deduped:
+                if _normalise_name(kept["name"]) != norm:
+                    continue
+                if _haversine(h["lat"], h["lng"], kept["lat"], kept["lng"]) < 500:
+                    duplicate = True
+                    break
+            if not duplicate:
+                deduped.append(h)
+
+        return deduped
 
 
     async def rank_hospitals(self, request: HospitalRequest) -> HospitalRankingResponse:
@@ -222,7 +461,45 @@ class HospitalIntelligenceAgent:
         )
 
         hospitals = await self._fetch_live_hospitals(request.incident_location.lat, request.incident_location.lng)
-        
+
+        # An oncology centre or maternity-only unit is not a valid destination
+        # for a cardiac arrest, no matter how close it is. Filter before
+        # scoring, so proximity can never override clinical suitability.
+        if etype in _RECEIVING_REQUIRED:
+            eligible = [
+                h for h in hospitals
+                if h.get("emergency_receiving", True)
+                and not (
+                    h["capability_provenance"] != "curated"
+                    and _looks_non_emergency(h["name"])
+                )
+            ]
+            excluded = len(hospitals) - len(eligible)
+            if excluded:
+                logger.info(
+                    "Excluded %d non-receiving facilities for %s emergency",
+                    excluded, etype,
+                )
+            hospitals = eligible or hospitals
+
+        # Specialty-centre bypass gate (see _CAPABILITY_GATE).
+        gate = _CAPABILITY_GATE.get(etype)
+        gate_applied = False
+        if gate:
+            factor, threshold = gate
+            qualified = [
+                h for h in hospitals
+                if h["capabilities"].get(factor, 0.0) >= threshold
+            ]
+            if len(qualified) >= _MIN_GATED_CANDIDATES:
+                logger.info(
+                    "Specialty bypass: %d of %d facilities meet %s >= %.2f "
+                    "for %s - restricting candidates",
+                    len(qualified), len(hospitals), factor, threshold, etype,
+                )
+                hospitals = qualified
+                gate_applied = True
+
         entries: list[HospitalEntry] = []
 
         for hosp in hospitals:
@@ -266,17 +543,87 @@ class HospitalIntelligenceAgent:
                 icu_available=hosp["icu_available"],
                 specialists=hosp["specialists"],
                 blood_availability=hosp["capabilities"].get("blood_availability", 0.5),
-                factor_breakdown=breakdown,
+                capability_provenance=hosp.get("capability_provenance", "simulated"),
+                emergency_receiving=hosp.get("emergency_receiving", True),
+                score_breakdown=breakdown,
             ))
 
         entries.sort(key=lambda e: e.score, reverse=True)
 
+        # ------------------------------------------------------------------
+        # Stage 2: re-rank the shortlist on real road-network travel time.
+        #
+        # Stage 1 ranks ~900 candidates using straight-line distance at a flat
+        # average speed, which is cheap but wrong: it ignores one-ways, river
+        # and rail crossings, and road class. Recomputing an actual A* path for
+        # every candidate would take ~45s, so only the shortlist is upgraded.
+        # ------------------------------------------------------------------
+        shortlist = entries[:_ROAD_ETA_SHORTLIST]
+        upgraded = self._rerank_on_road_eta(
+            shortlist, request.incident_location, weights,
+        )
+
         return HospitalRankingResponse(
-            ranked_hospitals=entries[:5], # Return top 5
+            ranked_hospitals=upgraded[:5],
             emergency_type=request.emergency_type,
-            weights_used=weights_label,
+            weights_used=weights_label + (" + specialty-bypass" if gate_applied else ""),
             data_freshness=DataFreshness.LIVE,
         )
+
+    def _rerank_on_road_eta(
+        self,
+        shortlist: list[HospitalEntry],
+        origin: Coordinate,
+        weights: list[tuple[str, float]],
+    ) -> list[HospitalEntry]:
+        """
+        Replace the straight-line travel estimate with a routed ETA.
+
+        Falls back to the stage-1 ordering if the road graph is unavailable, so
+        this can only ever improve the ranking, never break it.
+        """
+        from agents.local_router import local_router
+
+        if not local_router.available and not local_router.load():
+            return shortlist
+
+        travel_weight = dict(weights).get("travel_time", 0.0)
+        if travel_weight <= 0:
+            return shortlist
+
+        for entry in shortlist:
+            path = local_router.find_path(
+                (origin.lat, origin.lng),
+                (entry.location.lat, entry.location.lng),
+            )
+            if not path:
+                continue
+
+            road_time_s = path["travel_time_s"]
+            new_travel_score = max(
+                0.0, min(1.0, 1.0 - (road_time_s / _MAX_TRAVEL_TIME_S))
+            )
+
+            # Swap the travel component out of the total, leaving every other
+            # weighted factor exactly as stage 1 computed it.
+            for bd in entry.score_breakdown:
+                if bd.factor != _FACTOR_LABELS["travel_time"]:
+                    continue
+                old_weighted = bd.weighted_score
+                bd.raw_score = round(new_travel_score, 3)
+                bd.weighted_score = round(travel_weight * new_travel_score, 4)
+                entry.score = round(entry.score - old_weighted + bd.weighted_score, 4)
+                break
+
+            entry.road_eta_seconds = round(road_time_s, 1)
+            entry.road_distance_m = path["distance_m"]
+            entry.reasoning += (
+                f" ROUTED: {path['distance_m'] / 1000:.1f}km by road, "
+                f"{road_time_s / 60:.1f} min via {', '.join(path['roads'][:2])}."
+            )
+
+        shortlist.sort(key=lambda e: e.score, reverse=True)
+        return shortlist
 
     def _build_reasoning(self, hosp: dict[str, Any], total_score: float, distance_m: float,
                          emergency_type: str, breakdown: list[ScoreBreakdown]) -> str:
@@ -287,13 +634,16 @@ class HospitalIntelligenceAgent:
         dist_km = distance_m / 1000
         travel_s = distance_m / _AVG_SPEED_MPS
 
+        provenance = hosp.get("capability_provenance", "simulated")
+        tag = "VERIFIED PROFILE" if provenance == "curated" else "MODELLED ESTIMATE"
+
         parts = [
-            f"{hosp['name']} scores {total_score:.3f} for {emergency_type} emergency.",
+            f"[{tag}] {hosp['name']} scores {total_score:.3f} for {emergency_type} emergency.",
             f"Distance: {dist_km:.1f}km (est. {travel_s:.0f}s travel time).",
         ]
 
         strengths = [
-            f"{f.factor} ({f.raw_score:.2f} × {f.weight:.2f} = {f.weighted_score:.3f})"
+            f"{f.factor} ({f.raw_score:.2f} x {f.weight:.2f} = {f.weighted_score:.3f})"
             for f in top_factors
         ]
         parts.append(f"Strongest factors: {', '.join(strengths)}.")
@@ -301,10 +651,10 @@ class HospitalIntelligenceAgent:
         if weak_factor and weak_factor.raw_score < 0.5:
             parts.append(f"Weakest: {weak_factor.factor} ({weak_factor.raw_score:.2f}).")
 
-        if hosp["icu_available"] > 0:
-            parts.append(f"ICU: {hosp['icu_available']} beds available.")
-        else:
-            parts.append("ICU: no beds currently available.")
+        parts.append(
+            f"ICU: {hosp['icu_available']}/{hosp.get('icu_total', '?')} beds free "
+            f"(SIMULATED - no live hospital feed integrated)."
+        )
 
         return " ".join(parts)
 

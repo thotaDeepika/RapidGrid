@@ -1,52 +1,222 @@
+/**
+ * Decision rationale.
+ *
+ * The backend now emits a genuine counterfactual - which hospital lost, on
+ * which factor, and what the trade-off cost in road minutes. Previously that
+ * arrived as one undifferentiated paragraph among six. Here the trade-off is
+ * the centrepiece, drawn as a comparison rather than described in prose,
+ * because it is the one thing a dispatcher must understand before overriding.
+ */
+
 import React from 'react';
-import { BrainCircuit, Star } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
+import { Panel, PanelHead, Provenance, fmt } from './ui';
+
+/** Split the explanation into its labelled sections. */
+function parseExplanation(text = '') {
+  const keys = ['ROUTE', 'HOSPITAL', 'TRAFFIC', 'ALTERNATIVE CONSIDERED', 'FUSION', 'WARNING'];
+  const out = {};
+  keys.forEach((key) => {
+    const re = new RegExp(`${key}:\\s*(.*?)(?=\\s(?:${keys.join('|')}):|$)`, 's');
+    const hit = text.match(re);
+    if (hit) out[key] = hit[1].trim();
+  });
+  return out;
+}
+
+function FactorBar({ factor }) {
+  const pctOfWeight = factor.weight > 0 ? factor.score : 0;
+  return (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2">
+      <div className="min-w-0">
+        <div className="truncate text-[12px] font-medium text-text">{factor.factor}</div>
+        <div className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-paper-sunk">
+          <div
+            className="h-full rounded-full bg-ink transition-[width] duration-500"
+            style={{ width: `${Math.max(2, pctOfWeight * 100)}%` }}
+          />
+        </div>
+      </div>
+      <div className="text-right font-mono text-[11px] leading-tight">
+        <div className="font-bold text-text">{fmt.score(factor.weighted_score)}</div>
+        <div className="text-text-faint">w {factor.weight.toFixed(2)}</div>
+      </div>
+    </div>
+  );
+}
+
+/** The counterfactual, drawn as the trade-off it actually is. */
+function TradeOff({ winner, runnerUp }) {
+  if (!winner || !runnerUp) return null;
+
+  const byFactor = (entry) =>
+    Object.fromEntries((entry.score_breakdown ?? []).map((b) => [b.factor, b]));
+  const w = byFactor(winner);
+  const r = byFactor(runnerUp);
+  const shared = Object.keys(w).filter((k) => k in r);
+  if (!shared.length) return null;
+
+  const conceded = shared.reduce((a, b) =>
+    r[b].weighted_score - w[b].weighted_score > r[a].weighted_score - w[a].weighted_score ? b : a,
+  );
+  const gained = shared.reduce((a, b) =>
+    w[b].weighted_score - r[b].weighted_score > w[a].weighted_score - r[a].weighted_score ? b : a,
+  );
+
+  const etaDelta =
+    winner.road_eta_seconds && runnerUp.road_eta_seconds
+      ? (runnerUp.road_eta_seconds - winner.road_eta_seconds) / 60
+      : null;
+
+  const Column = ({ entry, chosen, factor, otherFactor }) => (
+    <div
+      className={`min-w-0 rounded-sm border p-3 ${
+        chosen ? 'border-signal bg-signal-wash' : 'border-rule bg-paper-sunk'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={`t-tag ${
+            chosen ? 'text-signal-hover' : 'text-text-faint'
+          }`}
+        >
+          {chosen ? 'Selected' : 'Runner-up'}
+        </span>
+        <span className="font-mono text-[11px] font-bold text-text">
+          {fmt.score(entry.score)}
+        </span>
+      </div>
+      <div className="mt-1.5 text-[12px] font-semibold leading-snug text-text">{entry.name}</div>
+      <dl className="mt-2.5 space-y-1 border-t border-rule/70 pt-2 t-meta">
+        <div className="flex justify-between gap-2">
+          <dt className="truncate text-text-faint">{factor}</dt>
+          <dd className="font-bold text-text">{entry.__f?.[factor]?.raw_score?.toFixed(2)}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="truncate text-text-faint">{otherFactor}</dt>
+          <dd className="font-bold text-text">{entry.__f?.[otherFactor]?.raw_score?.toFixed(2)}</dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-text-faint">Road ETA</dt>
+          <dd className="font-bold text-text">
+            {entry.road_eta_seconds ? `${fmt.minutes(entry.road_eta_seconds)} min` : '--'}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+
+  const wEntry = { ...winner, __f: w };
+  const rEntry = { ...runnerUp, __f: r };
+
+  return (
+    <section className="border-t border-rule px-4 py-3.5">
+      <div className="eyebrow mb-2.5">The trade-off</div>
+      <div className="grid grid-cols-2 gap-2">
+        <Column entry={wEntry} chosen factor={gained} otherFactor={conceded} />
+        <Column entry={rEntry} factor={gained} otherFactor={conceded} />
+      </div>
+      <p className="mt-2.5 text-[12px] leading-relaxed text-text-muted">
+        <span className="font-semibold text-text">{runnerUp.name}</span> is stronger on{' '}
+        <span className="font-semibold text-text">{conceded.toLowerCase()}</span>, but{' '}
+        <span className="font-semibold text-text">{winner.name}</span> wins on{' '}
+        <span className="font-semibold text-text">{gained.toLowerCase()}</span>
+        {etaDelta != null && Math.abs(etaDelta) >= 0.5 && (
+          <>
+            {etaDelta > 0 ? ' and reaches the patient ' : ' at a cost of '}
+            <span className="font-mono font-bold text-signal-hover">
+              {Math.abs(etaDelta).toFixed(1)} min
+            </span>
+            {etaDelta > 0 ? ' sooner' : ' extra transport time'}
+          </>
+        )}
+        .
+      </p>
+    </section>
+  );
+}
 
 export default function AIRationale({ plan }) {
   if (!plan) return null;
 
-  return (
-    <div className="bg-white p-6 rounded-3xl border border-[#e2e8f0] shadow-elevation-md flex flex-col gap-4 relative overflow-hidden">
-      {/* Decorative background accent */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-[#f0ecfd] rounded-full blur-2xl pointer-events-none" />
-      
-      <div className="flex justify-between items-center z-10 border-b border-[#e2e8f0] pb-3">
-        <h3 className="font-display font-extrabold flex items-center gap-2 text-[#5f4bb6] text-base">
-          <BrainCircuit size={20} />
-          Decision Fusion AI Rationale
-        </h3>
-        <div className="flex items-center gap-1.5 bg-[#f0ecfd] text-[#5f4bb6] px-3 py-1 rounded-full text-xs font-bold font-mono border border-[#86a5d9]/30">
-          <Star size={14} className="fill-[#5f4bb6]" />
-          {Math.round((plan.overall_confidence || 0.94) * 100)}% Confidence
-        </div>
-      </div>
-      
-      <p className="text-xs text-[#5a6860] z-10 leading-relaxed bg-[#f6f8fb] p-3.5 rounded-2xl border border-[#e2e8f0] font-body">
-        {plan.explanation}
-      </p>
+  const sections = parseExplanation(plan.explanation ?? '');
+  const factors = [...(plan.factor_breakdown ?? [])].sort(
+    (a, b) => b.weighted_score - a.weighted_score,
+  );
 
-      <div className="z-10 space-y-2">
-        <h4 className="text-[11px] font-mono font-bold text-[#5f4bb6] uppercase tracking-wider">5-Dimension Factor Scoring Breakdown</h4>
-        <div className="bg-[#f6f8fb] rounded-2xl border border-[#e2e8f0] overflow-hidden">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-[#f0f4f9] text-[10px] font-mono uppercase text-[#5a6860] border-b border-[#e2e8f0]">
-              <tr>
-                <th className="px-3.5 py-2 font-bold">Factor</th>
-                <th className="px-3.5 py-2 font-bold text-center">Weight</th>
-                <th className="px-3.5 py-2 font-bold text-right">Weighted Score</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#e2e8f0] font-mono">
-              {plan.factor_breakdown?.map((f, i) => (
-                <tr key={i} className="text-[#202a25] hover:bg-[#f0ecfd]/50 transition-colors">
-                  <td className="px-3.5 py-2 font-semibold">{f.factor}</td>
-                  <td className="px-3.5 py-2 text-center text-[#5a6860]">{f.weight.toFixed(2)}</td>
-                  <td className="px-3.5 py-2 text-right font-bold text-[#5f4bb6]">{f.weighted_score.toFixed(3)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  // Never invent a confidence figure. A missing value means the pipeline
+  // degraded, and the dispatcher must see that rather than a reassuring number.
+  const hasConfidence = typeof plan.overall_confidence === 'number';
+  const confidence = hasConfidence ? Math.round(plan.overall_confidence * 100) : null;
+  const degraded = plan.data_freshness && plan.data_freshness !== 'live';
+
+  const ranked = plan.all_hospitals ?? [];
+
+  return (
+    <Panel className="overflow-hidden">
+      <PanelHead
+        label="Decision rationale"
+        right={
+          <span
+            className={`font-mono text-[11px] font-bold ${
+              confidence == null
+                ? 'text-text-faint'
+                : confidence >= 75
+                  ? 'text-verified'
+                  : 'text-signal-hover'
+            }`}
+          >
+            {confidence == null ? 'confidence unavailable' : `${confidence}% confidence`}
+          </span>
+        }
+      />
+
+      {degraded && (
+        <div className="flex items-start gap-2 border-b border-signal-edge bg-signal-wash px-4 py-2.5">
+          <AlertTriangle size={13} className="mt-px shrink-0 text-signal-hover" />
+          <p className="text-[11px] leading-relaxed text-signal-hover">
+            <span className="font-bold uppercase tracking-wide">Degraded data</span> — live routing
+            was unavailable, so this plan used the offline road graph. Verify the ETA before
+            dispatching.
+          </p>
         </div>
-      </div>
-    </div>
+      )}
+
+      <TradeOff winner={ranked[0]} runnerUp={ranked[1]} />
+
+      <section className="border-t border-rule px-4 py-3.5">
+        <div className="eyebrow mb-1">Weighted factors</div>
+        <div className="divide-y divide-rule/60">
+          {factors.map((f, i) => (
+            <FactorBar key={i} factor={f} />
+          ))}
+        </div>
+      </section>
+
+      {(sections.ROUTE || sections.TRAFFIC) && (
+        <section className="space-y-2.5 border-t border-rule bg-paper-sunk px-4 py-3.5">
+          {sections.ROUTE && (
+            <div>
+              <div className="eyebrow mb-1">Route</div>
+              <p className="text-[11px] leading-relaxed text-text-muted">{sections.ROUTE}</p>
+            </div>
+          )}
+          {sections.TRAFFIC && (
+            <div>
+              <div className="eyebrow mb-1">Traffic</div>
+              <p className="text-[11px] leading-relaxed text-text-muted">{sections.TRAFFIC}</p>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2 border-t border-rule pt-2.5">
+            <span className="eyebrow">Data</span>
+            <Provenance kind={plan.data_freshness === 'live' ? 'live' : 'modelled'}>
+              {plan.data_freshness === 'live' ? 'Live routing' : 'Offline graph'}
+            </Provenance>
+            <Provenance kind="curated">Hospital capability</Provenance>
+            <Provenance kind="simulated">Bed availability</Provenance>
+          </div>
+        </section>
+      )}
+    </Panel>
   );
 }

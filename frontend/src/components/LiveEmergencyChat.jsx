@@ -1,215 +1,168 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Phone, MessageSquare, Radio, Truck, PlusSquare } from 'lucide-react';
+/**
+ * Incident channel.
+ *
+ * One thread per incident, shared by the citizen, the responding unit and the
+ * receiving ER. WebSocket first with an HTTP poll behind it, so a dropped
+ * socket degrades to slower delivery rather than silence - and the header says
+ * which transport is actually carrying messages instead of always claiming
+ * "live".
+ */
 
-export default function LiveEmergencyChat({ 
-  incidentId, 
-  senderRole = 'citizen', 
-  senderName = 'Citizen User', 
-  driverPhone = '+919876543210',
-  hospitalPhone = '112',
-  targetPhone = null,
-  hospitalName = 'MEDSTAR Speciality Hospital',
-  vehicleRequired = 'Ambulance',
-  includeAmbulanceBackup = false
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Send } from 'lucide-react';
+import { Panel, PanelHead } from './ui';
+
+const ROLE_LABEL = {
+  citizen: 'Caller',
+  driver: 'Responder',
+  dispatcher: 'Dispatch',
+  hospital: 'ER desk',
+};
+
+export default function LiveEmergencyChat({
+  incidentId,
+  senderRole = 'citizen',
+  senderName,
+  height = '260px',
 }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
-  const [activeChannel, setActiveChannel] = useState(
-    senderRole === 'driver' ? 'driver' : senderRole === 'hospital' ? 'hospital' : (vehicleRequired === 'Ambulance' ? 'driver' : 'driver')
-  );
-  const wsRef = useRef(null);
-  const chatStreamRef = useRef(null);
+  const [transport, setTransport] = useState('connecting');
+  const socket = useRef(null);
+  const stream = useRef(null);
 
-  const scrollToBottom = () => {
-    if (chatStreamRef.current) {
-      chatStreamRef.current.scrollTop = chatStreamRef.current.scrollHeight;
-    }
-  };
+  const displayName = senderName ?? ROLE_LABEL[senderRole] ?? 'User';
 
-  // Poll chat history every 1.5s
+  const scrollDown = useCallback(() => {
+    const el = stream.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+
+  useEffect(scrollDown, [messages, scrollDown]);
+
+  // HTTP history: the source of truth, and the fallback when the socket drops.
   useEffect(() => {
     if (!incidentId) return;
-
-    const fetchHistory = async () => {
+    let cancelled = false;
+    const load = async () => {
       try {
         const res = await fetch(`/api/chat/${incidentId}/messages`);
-        if (res.ok) {
-          const data = await res.json();
-          setMessages(data.messages || []);
-        }
-      } catch (err) {}
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) setMessages(data.messages ?? []);
+      } catch {
+        if (!cancelled) setTransport('offline');
+      }
     };
+    load();
+    const timer = setInterval(load, 3000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [incidentId]);
 
-    fetchHistory();
-    const pollInterval = setInterval(fetchHistory, 1500);
-
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/ws/chat/${incidentId}`;
-    
+  // WebSocket for immediate delivery.
+  useEffect(() => {
+    if (!incidentId) return;
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    let ws;
     try {
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          setMessages((prev) => [...prev, msg]);
-          scrollToBottom();
-        } catch (e) {}
-      };
-    } catch (err) {}
-
+      ws = new WebSocket(`${proto}//${window.location.host}/ws/chat/${incidentId}`);
+    } catch {
+      setTransport('polling');
+      return;
+    }
+    socket.current = ws;
+    ws.onopen = () => setTransport('live');
+    ws.onclose = () => setTransport('polling');
+    ws.onerror = () => setTransport('polling');
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        setMessages((prev) =>
+          prev.some(
+            (m) => m.timestamp === msg.timestamp && m.message === msg.message,
+          )
+            ? prev
+            : [...prev, msg],
+        );
+      } catch { /* non-JSON frame */ }
+    };
     return () => {
-      clearInterval(pollInterval);
-      if (wsRef.current) wsRef.current.close();
+      ws.close();
+      socket.current = null;
     };
   }, [incidentId]);
 
-  const handleSend = async (customText = null) => {
-    const msgText = customText || text;
-    if (!msgText.trim() || !incidentId) return;
+  const send = async (e) => {
+    e?.preventDefault();
+    const body = text.trim();
+    if (!body || !incidentId) return;
+    setText('');
 
     const payload = {
       incident_id: incidentId,
       sender_role: senderRole,
-      sender_name: senderName,
-      target_channel: activeChannel,
-      message: msgText.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      sender_name: displayName,
+      message: body,
     };
 
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(payload));
+    if (socket.current?.readyState === WebSocket.OPEN) {
+      socket.current.send(JSON.stringify(payload));
     }
-    
     try {
       await fetch(`/api/chat/${incidentId}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
-    } catch (err) {}
-
-    if (!customText) setText('');
+    } catch {
+      setTransport('offline');
+    }
   };
 
-  const filteredMessages = messages.filter(m => {
-    if (!m.target_channel) return true;
-    if (activeChannel === 'driver') {
-      return m.sender_role === 'driver' || m.target_channel === 'driver';
-    } else if (activeChannel === 'ambulance_backup') {
-      return m.sender_role === 'driver' || m.target_channel === 'ambulance_backup';
-    }
-    return m.sender_role === 'hospital' || m.target_channel === 'hospital';
-  });
-
-  const primaryLabel = vehicleRequired === 'Fire Engine' ? 'FIRE DRIVER CHAT' : vehicleRequired === 'Police Cruiser' ? 'POLICE CHAT' : vehicleRequired === 'Disaster Rescue' ? 'DISASTER CHAT' : 'PARAMEDIC CHAT';
-  const showHospitalTab = vehicleRequired === 'Ambulance' || includeAmbulanceBackup;
-
-  const currentTargetPhone = targetPhone || (activeChannel === 'hospital' ? hospitalPhone : driverPhone);
-  const currentTargetName = activeChannel === 'hospital' ? hospitalName : `${vehicleRequired} Driver Unit`;
+  const transportCopy = {
+    live: { label: 'Live', tone: 'text-verified' },
+    polling: { label: 'Delayed', tone: 'text-signal-hover' },
+    connecting: { label: 'Connecting', tone: 'text-text-faint' },
+    offline: { label: 'Offline', tone: 'text-critical' },
+  }[transport];
 
   return (
-    <div className="bg-white rounded-3xl border border-[#e2e8f0] flex flex-col h-[400px] shadow-elevation-md overflow-hidden font-body">
-      {/* Dynamic Unit Switcher Tabs */}
-      <div className="bg-[#f6f8fb] p-2.5 border-b border-[#e2e8f0] flex justify-between items-center gap-2 overflow-x-auto">
-        <div className="flex gap-2 flex-1">
-          <button
-            onClick={() => setActiveChannel('driver')}
-            className={`py-2 px-3.5 rounded-2xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 border flex-1 ${
-              activeChannel === 'driver'
-                ? 'bg-[#5f4bb6] text-white border-[#5f4bb6] shadow-sm'
-                : 'bg-white text-[#5a6860] border-[#e2e8f0] hover:border-[#86a5d9]'
-            }`}
-          >
-            <Truck size={14} />
-            <span className="truncate">{primaryLabel}</span>
-          </button>
+    <Panel className="flex flex-col overflow-hidden">
+      <PanelHead
+        label="Incident channel"
+        right={
+          <span className={`t-meta font-bold ${transportCopy.tone}`}>
+            {transportCopy.label}
+          </span>
+        }
+      />
 
-          {includeAmbulanceBackup && vehicleRequired !== 'Ambulance' && (
-            <button
-              onClick={() => setActiveChannel('ambulance_backup')}
-              className={`py-2 px-3.5 rounded-2xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 border flex-1 ${
-                activeChannel === 'ambulance_backup'
-                  ? 'bg-[#5f4bb6] text-white border-[#5f4bb6] shadow-sm'
-                  : 'bg-white text-[#5a6860] border-[#e2e8f0] hover:border-[#86a5d9]'
-              }`}
-            >
-              <Truck size={14} />
-              <span className="truncate">AMBULANCE BACKUP</span>
-            </button>
-          )}
-
-          {showHospitalTab && (
-            <button
-              onClick={() => setActiveChannel('hospital')}
-              className={`py-2 px-3.5 rounded-2xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-1.5 border flex-1 ${
-                activeChannel === 'hospital'
-                  ? 'bg-[#5f4bb6] text-white border-[#5f4bb6] shadow-sm'
-                  : 'bg-white text-[#5a6860] border-[#e2e8f0] hover:border-[#86a5d9]'
-              }`}
-            >
-              <PlusSquare size={14} />
-              <span className="truncate">HOSPITAL ER CHAT</span>
-            </button>
-          )}
-        </div>
-
-        {/* Telephony Action Buttons */}
-        <div className="flex items-center gap-1.5">
-          <a
-            href={`tel:${currentTargetPhone}`}
-            className="px-3 py-1.5 bg-[#f0ecfd] text-[#5f4bb6] hover:bg-[#5f4bb6] hover:text-white rounded-xl transition-all flex items-center gap-1 text-xs font-bold font-mono border border-[#86a5d9]/30"
-            title={`Call ${currentTargetName}`}
-          >
-            <Phone size={13} />
-            <span className="hidden sm:inline">Call</span>
-          </a>
-          <a
-            href={`sms:${currentTargetPhone}?body=Emergency%20Update%20from%20${senderRole}`}
-            className="px-3 py-1.5 bg-[#f0f4f9] text-[#202a25] hover:bg-[#e2e8f0] rounded-xl transition-all flex items-center gap-1 text-xs font-bold font-mono border border-[#e2e8f0]"
-            title={`SMS ${currentTargetName}`}
-          >
-            <MessageSquare size={13} />
-            <span className="hidden sm:inline">SMS</span>
-          </a>
-        </div>
-      </div>
-
-      {/* Active Channel Indicator */}
-      <div className="bg-[#f6f8fb]/80 px-4 py-1.5 border-b border-[#e2e8f0] flex justify-between items-center text-[11px] font-mono">
-        <span className="text-[#5a6860]">
-          Active Channel: <strong className="text-[#202a25] font-bold">{currentTargetName}</strong>
-        </span>
-        <span className="text-[#008b8c] flex items-center gap-1.5 font-bold">
-          <span className="w-2 h-2 bg-[#00b8b9] rounded-full animate-pulse"></span>
-          WEBSOCKET LIVE STREAM
-        </span>
-      </div>
-
-      {/* Messages Stream */}
-      <div ref={chatStreamRef} className="flex-1 p-4 overflow-y-auto space-y-3 text-xs bg-[#fafcff]">
-        {filteredMessages.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-[#88968f] space-y-1.5">
-            <Radio size={28} className="opacity-40 text-[#5f4bb6]" />
-            <p className="font-display font-bold text-xs text-[#202a25]">No messages in {currentTargetName} channel.</p>
-            <p className="text-[11px] text-[#5a6860]">Type below to stream direct messages.</p>
-          </div>
+      <div ref={stream} className="flex-1 space-y-2.5 overflow-y-auto px-4 py-3" style={{ height }}>
+        {messages.length === 0 ? (
+          <p className="py-8 text-center text-[12px] text-text-faint">
+            No messages yet. Anyone working this incident can write here.
+          </p>
         ) : (
-          filteredMessages.map((m, idx) => {
-            const isMe = m.sender_role === senderRole;
+          messages.map((m, i) => {
+            const mine = m.sender_role === senderRole;
             return (
-              <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div className="flex items-center gap-1.5 mb-1 font-mono text-[10px]">
-                  <span className="text-[#5a6860] font-bold">{m.sender_name} ({m.sender_role})</span>
-                  <span className="text-[#88968f]">{m.timestamp}</span>
-                </div>
-                <div className={`p-3 rounded-2xl max-w-[80%] shadow-sm text-xs ${
-                  isMe 
-                    ? 'bg-[#5f4bb6] text-white font-medium rounded-tr-none' 
-                    : 'bg-white text-[#202a25] border border-[#e2e8f0] rounded-tl-none'
-                }`}>
-                  {m.message}
+              <div key={i} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[82%] ${mine ? 'text-right' : ''}`}>
+                  <div className="mb-1 flex items-center gap-1.5 t-meta uppercase tracking-[0.1em] text-text-faint">
+                    <span className="font-bold">
+                      {ROLE_LABEL[m.sender_role] ?? m.sender_role}
+                    </span>
+                    {m.timestamp && <span>{m.timestamp}</span>}
+                  </div>
+                  <div
+                    className={`inline-block rounded-sm border px-3 py-2 text-left text-[12.5px] leading-relaxed ${
+                      mine
+                        ? 'border-ink bg-ink text-on-ink'
+                        : 'border-rule bg-paper-sunk text-text'
+                    }`}
+                  >
+                    {m.message}
+                  </div>
                 </div>
               </div>
             );
@@ -217,23 +170,22 @@ export default function LiveEmergencyChat({
         )}
       </div>
 
-      {/* Input Box */}
-      <div className="p-3 bg-white border-t border-[#e2e8f0] flex gap-2">
+      <form onSubmit={send} className="flex items-center gap-2 border-t border-rule p-2.5">
         <input
-          type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder={`Type message to ${currentTargetName}...`}
-          className="flex-1 bg-[#f6f8fb] border border-[#e2e8f0] text-[#202a25] px-4 py-2.5 rounded-2xl text-xs focus:outline-none focus:border-[#5f4bb6]"
+          placeholder="Type a message…"
+          className="min-w-0 flex-1 rounded-sm border border-rule bg-paper px-3 py-2.5 text-[16px] text-text placeholder:text-text-faint focus:border-signal focus:outline-none lg:py-2 lg:text-[13px]"
         />
         <button
-          onClick={() => handleSend()}
-          className="bg-[#5f4bb6] hover:bg-[#4c3a9e] text-white p-2.5 rounded-2xl transition-all flex items-center justify-center shadow-sm active:scale-95"
+          type="submit"
+          disabled={!text.trim()}
+          aria-label="Send message"
+          className="tap grid h-11 w-11 shrink-0 place-items-center rounded-sm bg-signal text-white transition-colors hover:bg-signal-hover disabled:opacity-40 lg:h-9 lg:w-9"
         >
-          <Send size={16} />
+          <Send size={15} />
         </button>
-      </div>
-    </div>
+      </form>
+    </Panel>
   );
 }
