@@ -22,6 +22,7 @@ Run with:
 from __future__ import annotations
 
 # Uvicorn Reload Trigger
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -33,6 +34,7 @@ from agents.accessibility import accessibility_agent
 from agents.communication import communication_agent
 from agents.coordinator import coordinator_agent
 from agents.learning import learning_agent
+from agents.local_router import local_router
 from agents.prediction import prediction_agent
 from agents.route_optimization import route_agent
 from agents.traffic_intelligence import traffic_agent
@@ -67,6 +69,19 @@ async def lifespan(app: FastAPI):
 
     # 1. Load road network into Traffic Intelligence
     traffic_agent.load_network()
+
+    # 1b. Load the offline routing graph so the Route Optimization Agent can
+    #     fall back to real pathfinding when the live API is unavailable.
+    if local_router.load():
+        logger.info(
+            "Offline routing tier ready (%s nodes) - live API failures will "
+            "degrade to A* instead of straight lines.",
+            local_router.meta.get("node_count", "?"),
+        )
+    else:
+        logger.warning(
+            "Offline routing tier UNAVAILABLE - run scripts/build_road_graph.py"
+        )
 
     # 2. Share the loaded data with Route Optimization (single source of truth)
     route_agent.load_network(
@@ -144,6 +159,11 @@ async def health():
         "status": "healthy",
         "service": "geoagentic-backend",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "routing": {
+            "live_api_key_configured": bool(route_agent.api_key),
+            "offline_graph_available": local_router.available,
+            **route_agent.stats(),
+        },
         "agents": {
             "traffic_intelligence": "active",
             "route_optimization": "active",
@@ -175,8 +195,8 @@ async def websocket_chat_endpoint(websocket: WebSocket, incident_id: str):
                     "timestamp": datetime.now().strftime("%H:%M:%S")
                 }
                 await chat.manager.broadcast(incident_id, msg_data)
-            except Exception as e:
-                print("WS Error:", e)
+            except Exception:
+                logger.exception("WebSocket chat message failed for %s", incident_id)
     except WebSocketDisconnect:
         chat.manager.disconnect(websocket, incident_id)
 

@@ -12,7 +12,16 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from agents.hospital_intelligence import hospital_agent
+from pydantic import BaseModel
+
 from models.schemas import HospitalRankingResponse, HospitalRequest
+
+
+class HospitalResourceUpdate(BaseModel):
+    """ER terminal toggling live resource availability."""
+    icu_available: bool
+    beds_available: int | None = None
+    note: str | None = None
 from routers.incident import ACTIVE_INCIDENTS
 
 router = APIRouter(prefix="/api/hospital", tags=["Hospital Intelligence"])

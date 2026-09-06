@@ -1,52 +1,202 @@
+/**
+ * Tactical map.
+ *
+ * Replaces a component that could draw exactly one polyline and no markers -
+ * which meant the product's headline feature, two-phase routing, was
+ * structurally impossible to show.
+ *
+ * This renders:
+ *   Phase 1  station hub -> patient      (dashed: the unit is still coming)
+ *   Phase 2  patient -> hospital ER      (solid: the transport leg)
+ *   markers  hub / patient / hospital, drawn from the design system
+ *   closures blocked road segments, when the city model reports any
+ *
+ * Tiles are OpenStreetMap - the only free, key-free source still serving real
+ * imagery - desaturated and tinted via CSS so the map belongs to this product
+ * rather than looking like an embedded third-party widget.
+ */
+
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-export default function MapOverlay({ routeCoordinates, height = '400px' }) {
-  const mapRef = useRef(null);
-  const mapInstance = useRef(null);
-  const routeLayer = useRef(null);
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; OpenStreetMap contributors';
+
+const COLOR = {
+  phase1: '#003b36',
+  phase2: '#e98a15',
+  closure: '#59114d',
+  hub: '#003b36',
+  patient: '#e98a15',
+  hospital: '#012622',
+};
+
+function marker(kind, label) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="rg-marker" style="width:26px;height:26px;background:${COLOR[kind]}">${label}</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  });
+}
+
+function toLatLngs(coords) {
+  if (!Array.isArray(coords)) return [];
+  return coords
+    .map((c) =>
+      Array.isArray(c)
+        ? [c[0], c[1]]
+        : c && Number.isFinite(c.lat) && Number.isFinite(c.lng)
+          ? [c.lat, c.lng]
+          : null,
+    )
+    .filter(Boolean);
+}
+
+export default function MapOverlay({
+  routeCoordinates,
+  phase1Coordinates,
+  origin,
+  hospital,
+  hub,
+  closures = [],
+  activePhase = 2,
+  height = '400px',
+  theme = 'light',
+  className = '',
+}) {
+  const holder = useRef(null);
+  const map = useRef(null);
+  const layers = useRef(null);
+
+  // Create the map exactly once. The previous version never called remove(),
+  // which throws "Map container is already initialized" on React's dev
+  // double-mount and leaks a map instance on every route change.
+  useEffect(() => {
+    if (map.current || !holder.current) return;
+
+    map.current = L.map(holder.current, {
+      zoomControl: false,
+      attributionControl: true,
+      preferCanvas: true,
+    }).setView([12.9716, 77.5946], 12);
+
+    L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(map.current);
+    L.control.zoom({ position: 'bottomright' }).addTo(map.current);
+    layers.current = L.layerGroup().addTo(map.current);
+
+    // A map created inside a container that is hidden or still being sized
+    // renders grey tiles until it is told to re-measure.
+    const invalidate = () => map.current && map.current.invalidateSize();
+    const raf = requestAnimationFrame(invalidate);
+    const observer = new ResizeObserver(invalidate);
+    observer.observe(holder.current);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+        layers.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
-    if (!mapInstance.current && mapRef.current) {
-      mapInstance.current = L.map(mapRef.current, { zoomControl: false }).setView([12.9716, 77.5946], 13);
-      
-      // Use CartoDB Dark Matter for the premium dark mode look
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-      }).addTo(mapInstance.current);
-    }
+    if (!map.current || !layers.current) return;
+    const group = layers.current;
+    group.clearLayers();
 
-    if (mapInstance.current && routeCoordinates && routeCoordinates.length > 0) {
-      const routeKey = JSON.stringify(routeCoordinates);
-      if (mapInstance.current._lastRouteKey === routeKey) return;
-      mapInstance.current._lastRouteKey = routeKey;
+    const p1 = toLatLngs(phase1Coordinates);
+    const p2 = toLatLngs(routeCoordinates);
+    const bounds = [];
 
-      if (routeLayer.current) {
-        mapInstance.current.removeLayer(routeLayer.current);
+    // Closures first, so route lines draw over them.
+    closures.forEach((segment) => {
+      const pts = toLatLngs(segment);
+      if (pts.length >= 2) {
+        L.polyline(pts, {
+          color: COLOR.closure,
+          weight: 7,
+          opacity: 0.9,
+          dashArray: '2 7',
+          lineCap: 'butt',
+        })
+          .bindPopup('<b>Road closed</b><br>Excluded from routing')
+          .addTo(group);
+        bounds.push(...pts);
       }
+    });
 
-      const latlngs = routeCoordinates.map(c => [c.lat, c.lng]);
-      
-      routeLayer.current = L.polyline(latlngs, {
-        color: '#3b82f6',
-        weight: 6,
-        opacity: 0.8,
+    // Phase 1: the unit is still en route to the patient, so it reads as
+    // provisional - dashed, cooler, thinner.
+    if (p1.length >= 2) {
+      L.polyline(p1, {
+        color: COLOR.phase1,
+        weight: activePhase === 1 ? 5 : 3.5,
+        opacity: activePhase === 1 ? 0.95 : 0.5,
+        dashArray: '7 6',
         lineCap: 'round',
-        lineJoin: 'round'
-      }).addTo(mapInstance.current);
-
-      try {
-        mapInstance.current.fitBounds(routeLayer.current.getBounds(), { padding: [50, 50] });
-      } catch (e) {}
+      })
+        .bindPopup('<b>Phase 1</b><br>Station hub to patient')
+        .addTo(group);
+      bounds.push(...p1);
     }
-  }, [routeCoordinates]);
+
+    // Phase 2: the transport leg. Solid, signal-coloured, the primary line.
+    if (p2.length >= 2) {
+      L.polyline(p2, {
+        color: '#ffffff',
+        weight: activePhase === 2 ? 9 : 7,
+        opacity: 0.85,
+        lineCap: 'round',
+        lineJoin: 'round',
+      }).addTo(group);
+      L.polyline(p2, {
+        color: COLOR.phase2,
+        weight: activePhase === 2 ? 5.5 : 4,
+        opacity: activePhase === 2 ? 1 : 0.6,
+        lineCap: 'round',
+        lineJoin: 'round',
+      })
+        .bindPopup('<b>Phase 2</b><br>Patient to hospital ER')
+        .addTo(group);
+      bounds.push(...p2);
+    }
+
+    const pin = (point, kind, label, popup) => {
+      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return;
+      L.marker([point.lat, point.lng], { icon: marker(kind, label) })
+        .bindPopup(popup)
+        .addTo(group);
+      bounds.push([point.lat, point.lng]);
+    };
+
+    pin(hub, 'hub', 'H', `<b>${hub?.name ?? 'Station hub'}</b><br>Responding unit base`);
+    pin(origin, 'patient', 'P', '<b>Patient location</b>');
+    pin(
+      hospital,
+      'hospital',
+      'ER',
+      `<b>${hospital?.name ?? 'Destination hospital'}</b><br>Receiving ER`,
+    );
+
+    if (bounds.length >= 2) {
+      try {
+        map.current.fitBounds(L.latLngBounds(bounds), { padding: [44, 44], maxZoom: 15 });
+      } catch {
+        /* bounds can be degenerate while data is still arriving */
+      }
+    }
+  }, [routeCoordinates, phase1Coordinates, origin, hospital, hub, closures, activePhase]);
 
   return (
-    <div 
-      ref={mapRef} 
-      style={{ height, width: '100%', borderRadius: '12px', zIndex: 1 }} 
-      className="border border-slate-700 shadow-inner"
+    <div
+      ref={holder}
+      style={{ height, width: '100%' }}
+      className={`${theme === 'ink' ? 'map-ink' : 'map-tinted'} overflow-hidden rounded-md border border-rule ${className}`}
     />
   );
 }

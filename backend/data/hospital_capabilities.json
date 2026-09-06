@@ -1,0 +1,406 @@
+{
+  "meta": {
+    "description": "Curated emergency-care capability profiles for Bengaluru hospitals.",
+    "provenance_model": {
+      "capability": "CURATED - facility capability (cath lab, stroke unit, trauma centre, blood bank) compiled from public hospital listings and institutional profiles. Stable over months; verifiable by a judge.",
+      "live_availability": "SIMULATED - real-time free-bed and blood-unit counts require a hospital HMIS/HL7 integration that does not exist. Values shown at runtime are generated deterministically and MUST be labelled SIMULATED in the UI.",
+      "note": "This split is deliberate. Capability is real and drives routing; live availability is modelled and never claimed as fact."
+    },
+    "scale": "capability scores are 0.0-1.0, representing suitability for receiving that emergency category",
+    "emergency_receiving": "false for facilities that do not accept undifferentiated emergency ambulance arrivals (oncology centres, maternity-only, day-surgery). These are excluded from trauma/cardiac/stroke routing.",
+    "last_reviewed": "2026-09-06"
+  },
+
+  "hospitals": {
+    "blr-019": {
+      "name": "Sri Jayadeva Institute of Cardiovascular Sciences and Research",
+      "type": "government_specialty",
+      "emergency_receiving": true,
+      "beds_total": 1550, "icu_total": 220,
+      "specialties": ["Cardiology", "Cardiothoracic Surgery", "Cardiac Emergency"],
+      "capabilities": {
+        "cardiology": 1.00, "trauma_centre": 0.15, "neurology": 0.10,
+        "ct_imaging": 0.90, "surgical_capacity": 0.88, "emergency_resource": 0.85,
+        "specialist": 0.45, "blood_availability": 0.85
+      },
+      "note": "Karnataka's apex cardiac referral centre. 24x7 cath lab, primary angioplasty."
+    },
+    "blr-010": {
+      "name": "NIMHANS (National Institute of Mental Health and Neurosciences)",
+      "type": "government_specialty",
+      "emergency_receiving": true,
+      "beds_total": 1050, "icu_total": 160,
+      "specialties": ["Neurology", "Neurosurgery", "Neurotrauma", "Stroke"],
+      "capabilities": {
+        "cardiology": 0.15, "trauma_centre": 0.62, "neurology": 1.00,
+        "ct_imaging": 0.95, "surgical_capacity": 0.82, "emergency_resource": 0.80,
+        "specialist": 0.48, "blood_availability": 0.75
+      },
+      "note": "National apex neuro centre. 24x7 stroke thrombolysis and neurosurgery."
+    },
+    "blr-022": {
+      "name": "Victoria Hospital (BMCRI)",
+      "type": "government_teaching",
+      "emergency_receiving": true,
+      "beds_total": 1000, "icu_total": 130,
+      "specialties": ["Emergency Medicine", "Trauma Surgery", "General Surgery"],
+      "capabilities": {
+        "cardiology": 0.52, "trauma_centre": 0.88, "neurology": 0.55,
+        "ct_imaging": 0.72, "surgical_capacity": 0.82, "emergency_resource": 0.92,
+        "specialist": 0.80, "blood_availability": 0.88
+      },
+      "note": "Major government trauma receiving centre; high-volume casualty department."
+    },
+    "blr-024": {
+      "name": "Sanjay Gandhi Institute of Trauma and Orthopaedics",
+      "type": "government_specialty",
+      "emergency_receiving": true,
+      "beds_total": 500, "icu_total": 60,
+      "specialties": ["Trauma Surgery", "Orthopaedics", "Polytrauma"],
+      "capabilities": {
+        "cardiology": 0.15, "trauma_centre": 0.92, "neurology": 0.38,
+        "ct_imaging": 0.80, "surgical_capacity": 0.86, "emergency_resource": 0.82,
+        "specialist": 0.45, "blood_availability": 0.72
+      },
+      "note": "Dedicated government trauma and orthopaedic emergency institute."
+    },
+    "blr-004": {
+      "name": "Narayana Health City (Bommasandra)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 2800, "icu_total": 380,
+      "specialties": ["Cardiac Sciences", "Trauma", "Neurosciences", "Transplant"],
+      "capabilities": {
+        "cardiology": 0.95, "trauma_centre": 0.72, "neurology": 0.72,
+        "ct_imaging": 0.92, "surgical_capacity": 0.92, "emergency_resource": 0.86,
+        "specialist": 0.92, "blood_availability": 0.86
+      },
+      "note": "Very high cardiac surgical volume; multi-hospital campus."
+    },
+    "blr-005": {
+      "name": "St. John's Medical College Hospital",
+      "type": "private_teaching",
+      "emergency_receiving": true,
+      "beds_total": 1350, "icu_total": 175,
+      "specialties": ["Emergency Medicine", "Trauma", "Cardiology", "Neurology"],
+      "capabilities": {
+        "cardiology": 0.76, "trauma_centre": 0.82, "neurology": 0.76,
+        "ct_imaging": 0.86, "surgical_capacity": 0.86, "emergency_resource": 0.86,
+        "specialist": 0.90, "blood_availability": 0.86
+      },
+      "note": "Large teaching tertiary with a broad 24x7 emergency department."
+    },
+    "blr-001": {
+      "name": "Manipal Hospital (Old Airport Road)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 650, "icu_total": 120,
+      "specialties": ["Cardiology", "Neurology", "Trauma", "Critical Care"],
+      "capabilities": {
+        "cardiology": 0.86, "trauma_centre": 0.80, "neurology": 0.82,
+        "ct_imaging": 0.90, "surgical_capacity": 0.86, "emergency_resource": 0.86,
+        "specialist": 0.90, "blood_availability": 0.82
+      },
+      "note": "Flagship private tertiary; 24x7 cath lab and stroke pathway."
+    },
+    "blr-002": {
+      "name": "Fortis Hospital (Bannerghatta Road)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 400, "icu_total": 90,
+      "specialties": ["Cardiac Sciences", "Neurosciences", "Critical Care"],
+      "capabilities": {
+        "cardiology": 0.90, "trauma_centre": 0.74, "neurology": 0.82,
+        "ct_imaging": 0.90, "surgical_capacity": 0.85, "emergency_resource": 0.82,
+        "specialist": 0.86, "blood_availability": 0.80
+      },
+      "note": "Strong interventional cardiology and neurointervention programme."
+    },
+    "blr-003": {
+      "name": "Apollo Hospital (Bannerghatta Road)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 450, "icu_total": 95,
+      "specialties": ["Cardiology", "Neurology", "Emergency Medicine"],
+      "capabilities": {
+        "cardiology": 0.87, "trauma_centre": 0.76, "neurology": 0.80,
+        "ct_imaging": 0.89, "surgical_capacity": 0.85, "emergency_resource": 0.84,
+        "specialist": 0.88, "blood_availability": 0.81
+      },
+      "note": "24x7 emergency with cardiac and stroke pathways."
+    },
+    "blr-007": {
+      "name": "Aster CMI Hospital (Hebbal)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 500, "icu_total": 100,
+      "specialties": ["Neurosciences", "Cardiac Sciences", "Critical Care"],
+      "capabilities": {
+        "cardiology": 0.82, "trauma_centre": 0.74, "neurology": 0.84,
+        "ct_imaging": 0.88, "surgical_capacity": 0.84, "emergency_resource": 0.82,
+        "specialist": 0.86, "blood_availability": 0.78
+      },
+      "note": "North Bengaluru tertiary referral centre."
+    },
+    "blr-006": {
+      "name": "Sakra World Hospital (Devarabeesanahalli)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 300, "icu_total": 78,
+      "specialties": ["Neurosciences", "Orthopaedics", "Cardiac Sciences"],
+      "capabilities": {
+        "cardiology": 0.78, "trauma_centre": 0.75, "neurology": 0.85,
+        "ct_imaging": 0.88, "surgical_capacity": 0.83, "emergency_resource": 0.80,
+        "specialist": 0.84, "blood_availability": 0.76
+      },
+      "note": "Strong neurosciences and spine programme; east Bengaluru."
+    },
+    "blr-009": {
+      "name": "MS Ramaiah Memorial Hospital",
+      "type": "private_teaching",
+      "emergency_receiving": true,
+      "beds_total": 1100, "icu_total": 140,
+      "specialties": ["Emergency Medicine", "Trauma", "Cardiology"],
+      "capabilities": {
+        "cardiology": 0.76, "trauma_centre": 0.80, "neurology": 0.72,
+        "ct_imaging": 0.84, "surgical_capacity": 0.84, "emergency_resource": 0.85,
+        "specialist": 0.86, "blood_availability": 0.84
+      },
+      "note": "Teaching tertiary with a large casualty department."
+    },
+    "blr-008": {
+      "name": "BGS Gleneagles Global Hospital (Kengeri)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 500, "icu_total": 95,
+      "specialties": ["Neurosciences", "Transplant", "Cardiac Sciences"],
+      "capabilities": {
+        "cardiology": 0.78, "trauma_centre": 0.74, "neurology": 0.84,
+        "ct_imaging": 0.86, "surgical_capacity": 0.85, "emergency_resource": 0.80,
+        "specialist": 0.84, "blood_availability": 0.78
+      },
+      "note": "West Bengaluru tertiary; strong neuro and transplant."
+    },
+    "blr-011": {
+      "name": "Vikram Hospital (Millers Road)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 225, "icu_total": 60,
+      "specialties": ["Cardiac Sciences", "Neurosciences", "Emergency"],
+      "capabilities": {
+        "cardiology": 0.84, "trauma_centre": 0.70, "neurology": 0.80,
+        "ct_imaging": 0.85, "surgical_capacity": 0.80, "emergency_resource": 0.80,
+        "specialist": 0.80, "blood_availability": 0.74
+      },
+      "note": "Central Bengaluru; 24x7 cath lab, short transfer times from CBD."
+    },
+    "blr-020": {
+      "name": "Bangalore Baptist Hospital (Bellary Road)",
+      "type": "private_general",
+      "emergency_receiving": true,
+      "beds_total": 340, "icu_total": 55,
+      "specialties": ["Emergency Medicine", "Family Medicine", "General Surgery"],
+      "capabilities": {
+        "cardiology": 0.58, "trauma_centre": 0.68, "neurology": 0.52,
+        "ct_imaging": 0.74, "surgical_capacity": 0.72, "emergency_resource": 0.80,
+        "specialist": 0.68, "blood_availability": 0.74
+      },
+      "note": "Well-regarded emergency department serving north Bengaluru."
+    },
+    "blr-023": {
+      "name": "Bowring and Lady Curzon Hospital",
+      "type": "government_general",
+      "emergency_receiving": true,
+      "beds_total": 850, "icu_total": 70,
+      "specialties": ["General Medicine", "General Surgery", "Emergency"],
+      "capabilities": {
+        "cardiology": 0.42, "trauma_centre": 0.68, "neurology": 0.40,
+        "ct_imaging": 0.60, "surgical_capacity": 0.68, "emergency_resource": 0.78,
+        "specialist": 0.60, "blood_availability": 0.76
+      },
+      "note": "Central government general hospital with casualty intake."
+    },
+    "blr-013": {
+      "name": "Sparsh Hospital (Palace Road)",
+      "type": "private_specialty",
+      "emergency_receiving": true,
+      "beds_total": 250, "icu_total": 45,
+      "specialties": ["Orthopaedics", "Trauma", "Spine"],
+      "capabilities": {
+        "cardiology": 0.30, "trauma_centre": 0.84, "neurology": 0.48,
+        "ct_imaging": 0.80, "surgical_capacity": 0.84, "emergency_resource": 0.72,
+        "specialist": 0.55, "blood_availability": 0.68
+      },
+      "note": "Orthopaedic and polytrauma specialist centre."
+    },
+    "blr-027": {
+      "name": "Hosmat Hospital (Richmond Road)",
+      "type": "private_specialty",
+      "emergency_receiving": true,
+      "beds_total": 250, "icu_total": 42,
+      "specialties": ["Orthopaedics", "Trauma", "Sports Medicine"],
+      "capabilities": {
+        "cardiology": 0.35, "trauma_centre": 0.85, "neurology": 0.50,
+        "ct_imaging": 0.80, "surgical_capacity": 0.83, "emergency_resource": 0.75,
+        "specialist": 0.58, "blood_availability": 0.68
+      },
+      "note": "Dedicated accident and orthopaedic trauma hospital."
+    },
+    "blr-012": {
+      "name": "Columbia Asia Hospital (Hebbal)",
+      "type": "private_general",
+      "emergency_receiving": true,
+      "beds_total": 200, "icu_total": 38,
+      "specialties": ["Emergency Medicine", "General Surgery"],
+      "capabilities": {
+        "cardiology": 0.58, "trauma_centre": 0.62, "neurology": 0.55,
+        "ct_imaging": 0.76, "surgical_capacity": 0.70, "emergency_resource": 0.74,
+        "specialist": 0.66, "blood_availability": 0.66
+      },
+      "note": "Mid-size private general hospital with 24x7 emergency."
+    },
+    "blr-028": {
+      "name": "Mallya Hospital (Vittal Mallya Road)",
+      "type": "private_general",
+      "emergency_receiving": true,
+      "beds_total": 120, "icu_total": 30,
+      "specialties": ["General Medicine", "Cardiology", "Emergency"],
+      "capabilities": {
+        "cardiology": 0.66, "trauma_centre": 0.58, "neurology": 0.58,
+        "ct_imaging": 0.74, "surgical_capacity": 0.70, "emergency_resource": 0.72,
+        "specialist": 0.68, "blood_availability": 0.64
+      },
+      "note": "Central private hospital, short transfer from the CBD."
+    },
+    "blr-015": {
+      "name": "Manipal Hospital (Whitefield)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 250, "icu_total": 55,
+      "specialties": ["Emergency Medicine", "Cardiology", "Orthopaedics"],
+      "capabilities": {
+        "cardiology": 0.78, "trauma_centre": 0.74, "neurology": 0.72,
+        "ct_imaging": 0.84, "surgical_capacity": 0.80, "emergency_resource": 0.80,
+        "specialist": 0.80, "blood_availability": 0.74
+      },
+      "note": "East Bengaluru tertiary serving the Whitefield tech corridor."
+    },
+    "blr-029": {
+      "name": "Manipal Hospital (Sarjapur Road)",
+      "type": "private_tertiary",
+      "emergency_receiving": true,
+      "beds_total": 200, "icu_total": 45,
+      "specialties": ["Emergency Medicine", "Cardiology", "Critical Care"],
+      "capabilities": {
+        "cardiology": 0.76, "trauma_centre": 0.72, "neurology": 0.70,
+        "ct_imaging": 0.82, "surgical_capacity": 0.78, "emergency_resource": 0.78,
+        "specialist": 0.78, "blood_availability": 0.72
+      },
+      "note": "South-east corridor tertiary."
+    },
+    "blr-016": {
+      "name": "Kauvery Hospital (Electronic City)",
+      "type": "private_general",
+      "emergency_receiving": true,
+      "beds_total": 100, "icu_total": 28,
+      "specialties": ["Emergency Medicine", "Cardiology"],
+      "capabilities": {
+        "cardiology": 0.70, "trauma_centre": 0.62, "neurology": 0.60,
+        "ct_imaging": 0.76, "surgical_capacity": 0.70, "emergency_resource": 0.74,
+        "specialist": 0.68, "blood_availability": 0.64
+      },
+      "note": "Serves the Electronic City corridor; 24x7 emergency."
+    },
+    "blr-030": {
+      "name": "Apollo Spectra Hospital (Koramangala)",
+      "type": "private_daysurgery",
+      "emergency_receiving": false,
+      "beds_total": 60, "icu_total": 12,
+      "specialties": ["Elective Surgery", "Orthopaedics", "ENT"],
+      "capabilities": {
+        "cardiology": 0.25, "trauma_centre": 0.22, "neurology": 0.22,
+        "ct_imaging": 0.50, "surgical_capacity": 0.58, "emergency_resource": 0.30,
+        "specialist": 0.42, "blood_availability": 0.40
+      },
+      "note": "Short-stay surgical centre. Not an emergency receiving facility."
+    },
+    "blr-021": {
+      "name": "Kidwai Memorial Institute of Oncology",
+      "type": "government_specialty",
+      "emergency_receiving": false,
+      "beds_total": 700, "icu_total": 60,
+      "specialties": ["Oncology", "Radiotherapy", "Oncosurgery"],
+      "capabilities": {
+        "cardiology": 0.08, "trauma_centre": 0.05, "neurology": 0.12,
+        "ct_imaging": 0.82, "surgical_capacity": 0.60, "emergency_resource": 0.22,
+        "specialist": 0.30, "blood_availability": 0.80
+      },
+      "note": "Cancer-only referral institute. Excluded from trauma/cardiac/stroke routing."
+    },
+    "blr-025": {
+      "name": "HCG Cancer Hospital (KR Road)",
+      "type": "private_specialty",
+      "emergency_receiving": false,
+      "beds_total": 200, "icu_total": 30,
+      "specialties": ["Oncology", "Radiation Oncology"],
+      "capabilities": {
+        "cardiology": 0.12, "trauma_centre": 0.08, "neurology": 0.15,
+        "ct_imaging": 0.85, "surgical_capacity": 0.58, "emergency_resource": 0.25,
+        "specialist": 0.32, "blood_availability": 0.70
+      },
+      "note": "Oncology specialist. Not an emergency receiving facility."
+    },
+    "blr-026": {
+      "name": "Sri Shankara Cancer Hospital",
+      "type": "private_specialty",
+      "emergency_receiving": false,
+      "beds_total": 250, "icu_total": 28,
+      "specialties": ["Oncology"],
+      "capabilities": {
+        "cardiology": 0.10, "trauma_centre": 0.06, "neurology": 0.12,
+        "ct_imaging": 0.78, "surgical_capacity": 0.55, "emergency_resource": 0.22,
+        "specialist": 0.28, "blood_availability": 0.68
+      },
+      "note": "Oncology specialist. Not an emergency receiving facility."
+    },
+    "blr-014": {
+      "name": "Cloudnine Hospital (Jayanagar)",
+      "type": "private_specialty",
+      "emergency_receiving": false,
+      "beds_total": 100, "icu_total": 25,
+      "specialties": ["Obstetrics", "Neonatology", "Paediatrics"],
+      "capabilities": {
+        "cardiology": 0.15, "trauma_centre": 0.10, "neurology": 0.12,
+        "ct_imaging": 0.45, "surgical_capacity": 0.60, "emergency_resource": 0.35,
+        "specialist": 0.35, "blood_availability": 0.55
+      },
+      "note": "Maternity and neonatal specialist. Obstetric emergencies only."
+    },
+    "blr-017": {
+      "name": "Motherhood Hospital (Indiranagar)",
+      "type": "private_specialty",
+      "emergency_receiving": false,
+      "beds_total": 80, "icu_total": 20,
+      "specialties": ["Obstetrics", "Paediatrics", "Neonatology"],
+      "capabilities": {
+        "cardiology": 0.14, "trauma_centre": 0.10, "neurology": 0.12,
+        "ct_imaging": 0.42, "surgical_capacity": 0.56, "emergency_resource": 0.34,
+        "specialist": 0.34, "blood_availability": 0.52
+      },
+      "note": "Maternity and paediatric specialist. Obstetric emergencies only."
+    },
+    "blr-018": {
+      "name": "Rainbow Children's Hospital (BTM Layout)",
+      "type": "private_specialty",
+      "emergency_receiving": true,
+      "beds_total": 120, "icu_total": 40,
+      "specialties": ["Paediatrics", "Paediatric Intensive Care", "Neonatology"],
+      "capabilities": {
+        "cardiology": 0.30, "trauma_centre": 0.35, "neurology": 0.35,
+        "ct_imaging": 0.62, "surgical_capacity": 0.62, "emergency_resource": 0.60,
+        "specialist": 0.45, "blood_availability": 0.58
+      },
+      "note": "Paediatric emergency and PICU. Appropriate for child emergencies only."
+    }
+  }
+}

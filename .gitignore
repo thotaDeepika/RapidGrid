@@ -20,3 +20,8 @@ node_modules/
 dist/
 build/
 .vite/
+.agents/
+.claude/
+skills-lock.json
+# Runtime incident state - seeded per demo, not source
+backend/data/incidents_db.json

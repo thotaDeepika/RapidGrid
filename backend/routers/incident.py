@@ -6,13 +6,23 @@ from __future__ import annotations
 
 import uuid
 import asyncio
+import logging
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Response, status, HTTPException
 from pydantic import BaseModel
 
-from models.schemas import Coordinate, AccessibilityRequest, AccessibilityInputModality, FusionRequest
+from models.schemas import (
+    Coordinate,
+    AccessibilityRequest,
+    AccessibilityInputModality,
+    FusionRequest,
+    RouteRequest,
+)
 from agents.accessibility import accessibility_agent
 from agents.decision_fusion import fusion_engine
+from agents.route_optimization import route_agent, find_nearest_hub
+
+logger = logging.getLogger("geoagentic.incident")
 
 router = APIRouter(prefix="/api/incidents", tags=["Incidents"])
 
@@ -106,9 +116,7 @@ async def run_pipeline(incident_id: str, payload: IncidentReportPayload):
                 for c in fusion_res.recommended_route.coordinates
             ]
             hosp = fusion_res.recommended_hospital
-            save_db()
             # Compute 2-Phase Shortest Routes: Phase 1 (Station Hub -> Citizen) and Phase 2 (Citizen -> Hospital)
-            from agents.route_optimization import find_nearest_hub
             veh_type = payload.vehicle_required or "Ambulance"
             nearest_hub = find_nearest_hub(veh_type, payload.location.lat, payload.location.lng)
             
@@ -140,6 +148,7 @@ async def run_pipeline(incident_id: str, payload: IncidentReportPayload):
                 "vehicle_required": payload.vehicle_required or "Ambulance",
                 "include_ambulance_backup": bool(payload.include_ambulance_backup),
             }
+            save_db()
             break
 
 @router.post("")
@@ -190,70 +199,111 @@ async def get_all_incidents():
 
 @router.post("/{incident_id}/approve")
 async def approve_incident(incident_id: str, payload: ApprovePayload):
-    """Step 4 - Dispatcher approves or re-routes to a selected hospital."""
-    from agents.route_optimization import route_agent
-    from models.schemas import RouteRequest, Coordinate
+    """Step 4 - Dispatcher approves the AI plan, or overrides the hospital."""
 
     for inc in ACTIVE_INCIDENTS:
-        if inc["incident_id"] == incident_id:
-            inc["status"] = "dispatched"
-            inc["assigned_driver"] = "drv-11"
-            inc["dispatcher_id"] = payload.dispatcher_id
+        if inc["incident_id"] != incident_id:
+            continue
 
-            # Find approved hospital from all_hospitals candidate list
-            action_plan = inc.get("action_plan") or {}
-            all_hospitals = action_plan.get("all_hospitals") or []
-            target_hosp = None
+        action_plan = inc.get("action_plan") or {}
+        all_hospitals = action_plan.get("all_hospitals") or []
 
-            for h in all_hospitals:
-                h_dict = h if isinstance(h, dict) else h.model_dump()
-                if h_dict.get("hospital_id") == payload.approved_hospital or h_dict.get("name") == payload.approved_hospital:
-                    target_hosp = h_dict
-                    break
+        # Resolve the approved hospital by id or name.
+        target_hosp = None
+        for h in all_hospitals:
+            h_dict = h if isinstance(h, dict) else h.model_dump()
+            if payload.approved_hospital in (
+                h_dict.get("hospital_id"), h_dict.get("name")
+            ):
+                target_hosp = h_dict
+                break
 
-            if target_hosp:
-                hosp_loc_dict = target_hosp.get("location") or {}
-                hosp_lat = hosp_loc_dict.get("lat") or 12.9716
-                hosp_lng = hosp_loc_dict.get("lng") or 77.5946
+        # BUG: the dispatcher UI sends sentinel ids ('HOSP-DEFAULT', 'HOSP-AUTO')
+        # whenever the plan is still loading, and the old code then dereferenced
+        # target_hosp=None -> HTTP 500. Fall back to the AI recommendation.
+        if target_hosp is None:
+            recommended = action_plan.get("recommended_hospital")
+            if isinstance(recommended, dict):
+                target_hosp = recommended
+                logger.warning(
+                    "Approve for %s: '%s' not in candidate list — falling back "
+                    "to the recommended hospital '%s'.",
+                    incident_id, payload.approved_hospital,
+                    target_hosp.get("name"),
+                )
+            else:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"Cannot approve {incident_id}: no action plan is ready "
+                        f"yet and '{payload.approved_hospital}' matched no "
+                        f"candidate hospital."
+                    ),
+                )
 
-                cit_loc_dict = inc.get("location") or {}
-                cit_lat = cit_loc_dict.get("lat") or 12.9756
-                cit_lng = cit_loc_dict.get("lng") or 77.6068
+        inc["status"] = "dispatched"
+        inc["assigned_driver"] = "drv-11"
+        inc["dispatcher_id"] = payload.dispatcher_id
 
-                # Compute dynamic route to newly selected hospital
-                try:
-                    new_route = route_agent.compute_route(RouteRequest(
-                        origin=Coordinate(lat=cit_lat, lng=cit_lng),
-                        destination=Coordinate(lat=hosp_lat, lng=hosp_lng)
-                    ))
-                    new_coords = [{"lat": c.lat, "lng": c.lng} for c in new_route.coordinates]
-                    eta_mins = max(1, int(new_route.eta // 60))
-                    dist_meters = new_route.distance
-                except Exception as e:
-                    print("Error computing re-route:", e)
-                    new_coords = [{"lat": cit_lat, "lng": cit_lng}, {"lat": hosp_lat, "lng": hosp_lng}]
-                    eta_mins = 7
-                    dist_meters = 3500
+        hosp_loc = target_hosp.get("location") or {}
+        hosp_lat = hosp_loc.get("lat") or 12.9716
+        hosp_lng = hosp_loc.get("lng") or 77.5946
 
-                save_db()
-            inc["citizen_view"] = {
-                    "message": f"Help is being dispatched. Approved Hospital: {target_hosp.get('name')}.",
-                    "eta_minutes": eta_mins,
-                    "hospital_name": target_hosp.get("name"),
-                    "hospital_location": {"lat": hosp_lat, "lng": hosp_lng},
-                    "origin": {"lat": cit_lat, "lng": cit_lng},
-                    "route_coordinates": new_coords,
-                    "distance_meters": dist_meters,
-                    "emergency_type": inc.get("emergency_type", "General"),
-                    "severity": inc.get("severity", 0.5)
-                }
+        cit_loc = inc.get("location") or {}
+        cit_lat = cit_loc.get("lat") or 12.9756
+        cit_lng = cit_loc.get("lng") or 77.6068
 
-            import logging
-            logging.getLogger("geoagentic.bus").info(
-                f"PLAN_APPROVED for {incident_id}: SMS sent, pinged ER desk, pushed to drv-11"
-            )
+        # Recompute Phase 2 (citizen -> approved hospital).
+        route_ok = True
+        try:
+            new_route = route_agent.compute_route(RouteRequest(
+                origin=Coordinate(lat=cit_lat, lng=cit_lng),
+                destination=Coordinate(lat=hosp_lat, lng=hosp_lng),
+            ))
+            route_ok = new_route.confidence > 0 and len(new_route.coordinates) >= 2
+            new_coords = [{"lat": c.lat, "lng": c.lng} for c in new_route.coordinates]
+            eta_mins = max(1, int(new_route.eta // 60))
+            dist_meters = new_route.distance
+        except Exception:
+            logger.exception("Re-route failed for %s", incident_id)
+            route_ok = False
+            new_coords = [
+                {"lat": cit_lat, "lng": cit_lng},
+                {"lat": hosp_lat, "lng": hosp_lng},
+            ]
+            eta_mins = 0
+            dist_meters = 0.0
 
-            return inc
+        # MERGE into citizen_view rather than replacing it. The old code
+        # rebuilt the dict from scratch and silently dropped phase1_hub,
+        # phase1_route_coordinates, phase1_eta_minutes, vehicle_required and
+        # include_ambulance_backup — so approving wiped the 2-phase route off
+        # the citizen's map at the exact moment it mattered most.
+        citizen_view = dict(inc.get("citizen_view") or {})
+        citizen_view.update({
+            "message": f"Help is being dispatched. Approved Hospital: {target_hosp.get('name')}.",
+            "eta_minutes": eta_mins,
+            "hospital_name": target_hosp.get("name"),
+            "hospital_location": {"lat": hosp_lat, "lng": hosp_lng},
+            "origin": {"lat": cit_lat, "lng": cit_lng},
+            "route_coordinates": new_coords,
+            "distance_meters": dist_meters,
+            "emergency_type": inc.get("emergency_type", "General"),
+            "severity": inc.get("severity", 0.5),
+            "route_degraded": not route_ok,
+        })
+        inc["citizen_view"] = citizen_view
+
+        # Persist AFTER the view is built, not before.
+        save_db()
+
+        logger.info(
+            "PLAN_APPROVED for %s by %s: hospital=%s, ETA=%dmin%s",
+            incident_id, payload.dispatcher_id, target_hosp.get("name"),
+            eta_mins, "" if route_ok else " (ROUTE DEGRADED)",
+        )
+        return inc
+
     raise HTTPException(status_code=404, detail="Incident not found")
 
 @router.post("/{incident_id}/arrived")

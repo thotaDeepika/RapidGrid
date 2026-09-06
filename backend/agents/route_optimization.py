@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import uuid
 import httpx
+from collections import OrderedDict
 from typing import Any
 
+from agents.local_router import local_router
 from bus.event_bus import ROUTE_COMPUTED, ROUTE_REQUEST, bus
 from models.schemas import (
     Coordinate,
@@ -33,6 +36,15 @@ logger = logging.getLogger("geoagentic.agent.route")
 
 AGENT_NAME = "route_optimization"
 
+# --- Billing guard -----------------------------------------------------------
+# Google Routes is billed per request. During a demo the same origin/destination
+# pair gets recomputed on every poll, which burns quota for identical answers.
+# Cache on coordinates rounded to ~11m, with a short TTL so live traffic still
+# refreshes. _CACHE_PRECISION=4 decimal places ≈ 11 metres.
+_CACHE_TTL_S = 90.0
+_CACHE_MAX_ENTRIES = 256
+_CACHE_PRECISION = 4
+
 
 class RouteOptimizationAgent:
     """Live routing via Google Routes API."""
@@ -42,6 +54,49 @@ class RouteOptimizationAgent:
         from dotenv import load_dotenv
         load_dotenv()
         self.api_key = os.getenv("GOOGLE_ROUTES_API_KEY")
+        self._cache: OrderedDict[tuple, tuple[float, RouteResponse]] = OrderedDict()
+        self.api_calls = 0
+        self.cache_hits = 0
+        self.local_routes = 0
+
+    def _cache_key(self, request: RouteRequest) -> tuple:
+        return (
+            round(request.origin.lat, _CACHE_PRECISION),
+            round(request.origin.lng, _CACHE_PRECISION),
+            round(request.destination.lat, _CACHE_PRECISION),
+            round(request.destination.lng, _CACHE_PRECISION),
+        )
+
+    def _cache_get(self, key: tuple) -> RouteResponse | None:
+        hit = self._cache.get(key)
+        if hit is None:
+            return None
+        cached_at, response = hit
+        if time.monotonic() - cached_at > _CACHE_TTL_S:
+            del self._cache[key]
+            return None
+        self._cache.move_to_end(key)
+        self.cache_hits += 1
+        return response.model_copy(deep=True)
+
+    def _cache_put(self, key: tuple, response: RouteResponse) -> None:
+        self._cache[key] = (time.monotonic(), response.model_copy(deep=True))
+        self._cache.move_to_end(key)
+        while len(self._cache) > _CACHE_MAX_ENTRIES:
+            self._cache.popitem(last=False)
+
+    def stats(self) -> dict[str, Any]:
+        """Quota telemetry — billable calls made vs. calls saved by the cache."""
+        total = self.api_calls + self.cache_hits
+        return {
+            "billable_api_calls": self.api_calls,
+            "cache_hits": self.cache_hits,
+            "cached_routes": len(self._cache),
+            "hit_rate": round(self.cache_hits / total, 3) if total else 0.0,
+            "cache_ttl_seconds": _CACHE_TTL_S,
+            "offline_graph_routes": self.local_routes,
+            "offline_graph_available": local_router.available,
+        }
 
     def load_network(
         self,
@@ -60,8 +115,18 @@ class RouteOptimizationAgent:
         Compute the optimal route using Google Routes API.
         """
         if not self.api_key:
-            logger.error("Missing GOOGLE_ROUTES_API_KEY")
-            return self._fallback_route(request)
+            logger.warning(
+                "GOOGLE_ROUTES_API_KEY not set - using the offline graph router"
+            )
+            return self._local_route(request, reason="no API key configured")
+
+        cache_key = self._cache_key(request)
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            logger.info(
+                "Route cache HIT (%d billable calls saved so far)", self.cache_hits
+            )
+            return cached
 
         url = "https://routes.googleapis.com/directions/v2:computeRoutes"
         headers = {
@@ -93,20 +158,22 @@ class RouteOptimizationAgent:
         }
 
         try:
+            self.api_calls += 1
             with httpx.Client(timeout=10.0) as client:
                 resp = client.post(url, headers=headers, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"Google API HTTP error: {e.response.text}")
-            return self._fallback_route(request)
+            status = e.response.status_code
+            logger.error("Google Routes HTTP %s - falling back to offline router", status)
+            return self._local_route(request, reason=f"Google Routes HTTP {status}")
         except Exception as e:
-            logger.error(f"Failed to fetch route from Google: {e}")
-            return self._fallback_route(request)
+            logger.error("Google Routes unreachable (%s) - falling back", type(e).__name__)
+            return self._local_route(request, reason=f"Google Routes unreachable ({type(e).__name__})")
 
         routes = data.get("routes", [])
         if not routes:
-            return self._fallback_route(request)
+            return self._local_route(request, reason="Google Routes returned no path")
             
         route_data = routes[0]
         
@@ -123,7 +190,7 @@ class RouteOptimizationAgent:
             f"Estimated travel time: {eta:.0f}s, distance: {distance:.0f}m."
         )
 
-        return RouteResponse(
+        response = RouteResponse(
             route_id=f"R-{uuid.uuid4().hex[:8]}",
             coordinates=coords,
             distance=round(distance, 1),
@@ -136,9 +203,60 @@ class RouteOptimizationAgent:
             node_ids=[],
             edge_ids=[],
         )
+        self._cache_put(cache_key, response)
+        return response
+
+    def _local_route(self, request: RouteRequest, reason: str) -> RouteResponse:
+        """
+        Tier 2: A* over the cached OpenStreetMap graph.
+
+        A real path over a real road network. Marked CACHED rather than LIVE
+        because the speeds are modelled from road class plus whatever traffic
+        the Traffic Intelligence Agent has overlaid - not observed live.
+        """
+        if not local_router.available and not local_router.load():
+            return self._fallback_route(request)
+
+        path = local_router.find_path(
+            (request.origin.lat, request.origin.lng),
+            (request.destination.lat, request.destination.lng),
+        )
+        if not path:
+            return self._fallback_route(request)
+
+        self.local_routes += 1
+
+        roads = path["roads"]
+        via = ", ".join(roads[:3]) + ("..." if len(roads) > 3 else "")
+        detail = ""
+        if local_router.blocked_count:
+            detail = f" Avoiding {local_router.blocked_count} blocked segment(s)."
+        selection_reason = (
+            f"Offline graph route ({reason}). A* shortest-time path over "
+            f"{len(path['edge_ids'])} OpenStreetMap road segments via {via}."
+            f"{detail} Travel time {path['travel_time_s']:.0f}s, "
+            f"distance {path['distance_m']:.0f}m."
+        )
+
+        return RouteResponse(
+            route_id=f"R-{uuid.uuid4().hex[:8]}",
+            coordinates=[
+                Coordinate(lat=c["lat"], lng=c["lng"]) for c in path["coordinates"]
+            ],
+            distance=path["distance_m"],
+            eta=path["travel_time_s"],
+            delay_probability=0.25,
+            alternate_routes=[],
+            selection_reason=selection_reason,
+            data_freshness=DataFreshness.CACHED,
+            # Lower than Google's 0.95: a genuine path on modelled speeds.
+            confidence=0.75,
+            node_ids=[str(n) for n in path["node_ids"]],
+            edge_ids=[str(e) for e in path["edge_ids"]],
+        )
 
     def _fallback_route(self, request: RouteRequest) -> RouteResponse:
-        """Fallback if API fails."""
+        """Tier 3, last resort: no usable route at all. Never claim otherwise."""
         return RouteResponse(
             route_id=f"R-{uuid.uuid4().hex[:8]}",
             coordinates=[request.origin, request.destination],
@@ -146,8 +264,12 @@ class RouteOptimizationAgent:
             eta=0.0,
             delay_probability=1.0,
             alternate_routes=[],
-            selection_reason="Failed to compute route via Google Maps.",
-            data_freshness=DataFreshness.CACHED,
+            selection_reason=(
+                "NO ROUTE AVAILABLE - both the live routing API and the offline "
+                "road graph failed. Straight-line placeholder only; do not "
+                "dispatch on this geometry."
+            ),
+            data_freshness=DataFreshness.STALE,
             confidence=0.0,
             node_ids=[],
             edge_ids=[]
