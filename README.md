@@ -1,202 +1,378 @@
-# 🚨 RapidGrid / GeoAgentic — Autonomous Multi-Agent AI Emergency Response Platform
+# RapidGrid — GeoAgentic emergency vehicle routing
 
-RapidGrid (GeoAgentic) is a next-generation emergency response coordination platform. It integrates a **9-Agent Autonomous AI Network**, an **in-process Async Event Bus**, a **2-Phase Emergency Station Hub Routing Engine**, **Uber-style live hospital rerouting**, **multi-channel WebSockets live chat**, and **role-based portals** for Citizens, City Dispatchers, Paramedic First Responders, and Hospital ER Terminals.
+A multi-agent system that routes emergency vehicles in Bengaluru on what a
+hospital can actually **treat**, not just how close it is — and shows the
+dispatcher exactly what each decision traded away.
 
----
+**The thesis:** the nearest hospital is often the wrong one. A cardiac arrest
+needs a cath lab. Sending the patient to a closer emergency room that has to
+transfer them onward costs far more time than driving past it.
 
-## 🌟 Key System Capabilities
+> **On honesty:** parts of this system use live data and parts are modelled.
+> Every screen distinguishes the two, and so does this README — see
+> [What is real and what is modelled](#what-is-real-and-what-is-modelled).
+> Nothing is presented as measured unless it is.
 
-### 1. 🤖 9-Agent Autonomous AI Network
-The platform decomposes emergency routing and coordination into nine decoupled micro-agents operating asynchronously over an event bus:
-* **Traffic Intelligence Agent**: Monitors real-time road segment congestion, incidents, road closures, and weather risk.
-* **Route Optimization Agent**: Interoperates with Google Routes API (v2) for live traffic-aware routing and computes 2-Phase shortest paths from Station Hub bases.
-* **Hospital Intelligence Agent**: Evaluates and ranks nearby hospitals using weighted multi-factor criteria (ICU bed availability, emergency specialization, blood readiness, and travel distance).
-* **Decision Fusion Engine**: Synthesizes agent inputs into a single explainable action plan with per-dimension factor scoring (Response Time, Traffic, Hospital, Severity, Accessibility).
-* **Prediction Agent**: Provides ETA estimations with confidence intervals and weather/delay risk adjustments.
-* **Accessibility Agent**: Normalizes multi-modal citizen reports (text, voice, sign language, SOS button, symbols) into standardized incident contracts.
-* **Communication Agent**: Manages multi-channel dispatch notifications (SMS, WebSockets, Hospital API).
-* **Emergency Coordinator Agent**: Assesses incident severity, categorizes medical/fire/police requirements, and activates targeted agent workflows.
-* **Learning Agent**: Logs historical response metrics for continuous routing and dispatch optimization.
-
-### 2. 🏬 2-Phase Station Hub Routing Engine
-* **Phase 1 (Station Hub $\rightarrow$ Citizen Pickup)**: Computes the optimal response path from the nearest pre-configured service hub (*Aster Ambulance Hub, Hebbal Fire Station #4, Hebbal Police Base, NDRF Disaster Hub*) to the citizen's location.
-* **Phase 2 (Citizen Pickup $\rightarrow$ Hospital ER)**: Computes live traffic-aware shortest route from patient pickup location to the selected hospital ER entrance.
-
-### 3. 🚗 2-Stage Field Navigation & Uber-Style Live Hospital Rerouting
-* **Stage 1 (En Route to Patient)**: First responder navigates response route to citizen's GPS coordinates. Upon marking arrival (`[📍 MARK ARRIVED AT PATIENT SPOT]`), the incident advances to Stage 2.
-* **Stage 2 (En Route to Hospital ER)**: Navigation recomputes the route to destination ER.
-* **Uber-Style Live Rerouting**: The driver can change the destination hospital on the fly. The system recomputes the route via Google Routes API and updates **both the Driver field app and Citizen view in real time**.
-
-### 4. 🚑 Multi-Vehicle Selection & Mid-Incident Paramedic Standby Backup
-* **Emergency Options**: Medical Ambulance, Fire Engine Rescue, Police Patrol Unit, Disaster Search & Rescue.
-* **Mid-Incident Backup**: Tapping `+ DISPATCH AMBULANCE BACKUP NOW` dynamically dispatches a secondary paramedic unit to the scene without cancelling primary response.
-
-### 5. 💬 Multi-Channel WebSocket Live Chat
-* **Dynamic Direct Channels**: Renders isolated chat tabs for dispatched units (`[ 🚒 FIRE DRIVER CHAT ]`, `[ 🚔 POLICE CHAT ]`, `[ 🚑 AMBULANCE BACKUP CHAT ]`, `[ 🏥 HOSPITAL ER DESK CHAT ]`).
-* Real-time WebSocket streaming with HTTP fallback.
+For a walkthrough, see **[DEMO.md](DEMO.md)**.
 
 ---
 
-## 🏗️ System Architecture & Data Flow
+## What it does
+
+### Routes on clinical capability, not proximity
+
+Hospital capability profiles are curated for 30 Bengaluru facilities — cath
+lab, stroke unit, trauma centre, blood bank. A **specialty-bypass gate**
+screens candidates on capability before proximity, mirroring real EMS
+protocol: take a STEMI past the nearest ER to a PCI centre, then to the
+*nearest* PCI centre. Oncology, maternity and day-surgery units are excluded
+from emergency routing entirely.
+
+### Explains the decision, including what it rejected
+
+The Decision Fusion Engine scores five weighted dimensions and emits a genuine
+counterfactual — which hospital lost, on which factor, and what the choice
+cost in road minutes:
+
+> *St John's scores better on travel time (0.85 vs 0.64), but Fortis wins on
+> cath-lab capability (0.90 vs 0.76) and takes it by 0.017. By road, Fortis is
+> 6.2 min further.*
+
+### Measures outcome, not minutes
+
+Time-to-definitive-treatment against door-to-balloon (90 min), door-to-needle
+(60 min) and golden-hour targets. The dominant term is the **secondary
+transfer** — a hospital that cannot deliver the intervention costs a whole
+second journey:
 
 ```
-[ Citizen SOS Report ]
-        │
-        ▼
-[ Accessibility Agent ] ──> [ Emergency Coordinator ]
-                                     │
-                                     ▼
-                        [ Decision Fusion Engine ]
-                        ┌────────────┼────────────┐
-                        ▼            ▼            ▼
-                   [ Traffic ]   [ Route ]   [ Hospital ]
-                   [   Agent  ]  [ Agent ]   [  Agent   ]
-                        └────────────┬────────────┘
-                                     ▼
-                        [ Dispatcher Approval ]
-                                     │
-                 ┌───────────────────┴───────────────────┐
-                 ▼                                       ▼
-    [ Driver Field App (Stage 1 & 2) ]       [ Hospital ER Terminal ]
-                 │                                       │
-                 └──────────────[ Live Chat WS ]─────────┘
+                          PCI CENTRE      NEAREST ER
+  drive to hospital             16.0             5.0
+  in-hospital workup            27.2            34.6
+  secondary transfer             0.0            52.0
+  TOTAL to balloon              60.7           109.1
+  within 90 min target          True           False
+```
+
+### Keeps working when the internet does not
+
+Routing runs in three tiers, and never pretends:
+
+| Tier | Source | Freshness | Used when |
+| :-- | :-- | :-- | :-- |
+| 1 | Google Routes API v2 | `LIVE` | key configured and reachable |
+| 2 | A* over a cached 112,725-node OpenStreetMap graph | `CACHED` | quota, outage, or no key |
+| 3 | Straight-line placeholder | `STALE` | both failed — explicitly *not dispatchable* |
+
+Tier 2 produces real paths over real Bengaluru roads in ~100 ms. Tier 3 says
+`NO ROUTE AVAILABLE — do not dispatch on this geometry` rather than returning
+a confident-looking zero.
+
+### Models the city causally
+
+`agents/city_state.py` is a **structural causal model** over the road graph —
+mechanisms are specified from domain knowledge, not learned from data. We have
+no historical incident corpus to identify effects from, and the module says so.
+
+What that buys is intervention and counterfactual reasoning: in the real world
+you cannot run `do(close Bellary Road)`; inside a model we own, you can.
+
+```
+TimeOfDay ─┐
+Weather ───┼──▶ Congestion(edge) ──▶ ETA(route) ──▶ TimeToTreatment
+Closure ───┘         │  ▲
+   │                 │  └── displacement ──┐
+   └── do() ─────────┘                     │
+                                neighbouring edges
+```
+
+The load-bearing edge is **displacement**. Traffic on a closed road does not
+evaporate — it reappears on parallel streets, which congest, which slows a
+*different* ambulance elsewhere:
+
+```
+do(close Bellary Road) -> 52 segments closed, displaced onto 97 neighbours
+
+  used the closed road             28.8 -> 33.9 min  (+5.1)
+  parallel corridor (untouched)    13.1 -> 16.0 min  (+2.9)   <- never used it
+  across town                      24.4 -> 24.4 min  (+0.0)   <- correctly unaffected
 ```
 
 ---
 
-## 🛠️ Technology Stack
+## Agents
 
-* **Frontend**: React 18, Vite, Tailwind CSS, Leaflet.js (`react-leaflet`), Lucide Icons.
-* **Backend**: FastAPI, Asyncio, Pydantic v2, WebSockets, Uvicorn, Google Routes API (v2).
-* **Event Bus**: Async In-Process Pub/Sub (`EventBus`).
-* **Database**: JSON-based persistent state engine with atomic writes (`incidents_db.json`).
+| Agent | Responsibility |
+| :-- | :-- |
+| **Triage** (`triage.py`) | Weighted-keyword classification of free-text reports into emergency type and severity. Transparent and auditable — not a learned model, and never described as one. |
+| **Accessibility** | Normalises multi-modal reports (text, voice, sign language, SOS button) into a standard incident contract. |
+| **Traffic Intelligence** | Segment congestion, incidents, closures, weather risk. |
+| **Route Optimization** | Three-tier routing with a 90 s response cache to protect API quota. |
+| **Local Router** (`local_router.py`) | A* over the cached OpenStreetMap graph, implementing the `route-scoring.md` cost model. |
+| **City State** (`city_state.py`) | Causal model: time of day, weather, closures, and traffic displacement. |
+| **Hospital Intelligence** | Two-stage ranking — cheap scoring across ~900 candidates, then real road ETAs for the shortlist. Specialty-bypass gate. |
+| **Clinical Outcome** (`clinical_outcome.py`) | Time-to-treatment against guideline targets, including transfer penalties. |
+| **Decision Fusion** | Five-dimension weighted synthesis with an explicit counterfactual. |
+| **Prediction** | ETA with weather adjustment and a confidence interval. |
+| **Communication** | Dispatch notifications (SMS, hospital API, traffic control channels). |
+| **Emergency Coordinator** | Severity assessment and workflow activation. |
+| **Learning** | **Stub.** Logs decisions; does not yet feed anything back. `/health` reports it as `stub_active`. |
+
+Agents communicate over an in-process async event bus (`bus/event_bus.py`).
 
 ---
 
-## 📁 Repository Structure
+## What is real and what is modelled
+
+This distinction is enforced in the UI — verified values are drawn solid,
+modelled values carry hatched badges and dotted underlines.
+
+**Real**
+
+- Bengaluru road network — 112,725 nodes / 178,089 edges from OpenStreetMap
+- Live traffic routing via Google Routes API v2
+- Live weather via OpenWeather, factored into ETA
+- Hospital **capability** profiles, curated for 30 facilities
+- A* pathfinding, honouring closures and congestion
+
+**Modelled — and labelled as such everywhere**
+
+- Live ICU beds and blood units. No hospital HMIS or HL7 feed is integrated.
+- Ambulance fleet positions. Station hubs are fixed, not GPS-tracked.
+- Triage classification — transparent keyword scoring, not a trained model.
+- Traffic displacement coefficients. Literature-informed estimates, **not
+  calibrated** against Bengaluru traffic counts. Directionally sound;
+  magnitudes unvalidated.
+- Clinical process times — from published guideline targets, not measured
+  from live hospital systems.
+
+**Not implemented**
+
+- Authentication. Selecting a role grants it, with no credential check. The
+  login screen states this. Real auth is the first thing a production
+  deployment needs.
+- Multi-incident resource contention. Each incident assumes an available unit.
+
+---
+
+## Architecture
+
+```
+[ Citizen SOS ]
+      │
+      ▼
+[ Accessibility ] ──▶ [ Triage ] ──▶ [ Emergency Coordinator ]
+                                              │
+                                              ▼
+                                  [ Decision Fusion Engine ]
+              ┌───────────────┬───────────────┼───────────────┐
+              ▼               ▼               ▼               ▼
+        [ Traffic ]     [ Route Opt ]   [ Hospital ]   [ Clinical  ]
+        [  Intel   ]    [  3 tiers  ]   [  Intel    ]  [  Outcome  ]
+              │               │               │               │
+              │        [ City State ]         │               │
+              │        [  causal    ]         │               │
+              └───────────────┴───────────────┴───────────────┘
+                                              ▼
+                                  [ Dispatcher Approval ]
+                                              │
+                    ┌─────────────────────────┴─────────────────────────┐
+                    ▼                                                   ▼
+        [ Driver field app ]                                [ Hospital ER terminal ]
+        [ Stage 1 → Stage 2 ]                               [ capacity / divert    ]
+                    └────────────────[ incident channel ]────────────────┘
+```
+
+---
+
+## Repository layout
 
 ```
 RapidGrid/
+├── DEMO.md                              # Demo runbook — every command verified
 ├── backend/
-│   ├── main.py                  # FastAPI entry point & WebSocket endpoints
-│   ├── agents/                  # 9 Autonomous AI Agents
-│   │   ├── accessibility.py     # Multi-modal input translation agent
-│   │   ├── communication.py     # Multi-channel notification agent
-│   │   ├── coordinator.py       # Incident classification agent
-│   │   ├── decision_fusion.py   # 5-factor explainable fusion engine
-│   │   ├── hospital_intelligence.py # Hospital ranking agent
-│   │   ├── learning.py          # Continuous performance learning agent
-│   │   ├── prediction.py        # Delay & ETA estimation agent
-│   │   ├── route_optimization.py# Live Google Routes & 2-phase hub router
-│   │   └── traffic_intelligence.py # Traffic congestion agent
-│   ├── bus/                     # Event Bus implementation
-│   │   └── event_bus.py         # Async Pub/Sub event stream engine
-│   ├── models/                  # Pydantic schemas & data models
-│   │   └── schemas.py           # Shared data contracts across agents
-│   ├── routers/                 # FastAPI Router endpoints
-│   │   ├── chat.py              # WebSocket & HTTP chat handler
-│   │   ├── driver.py            # Responder queue & reroute API
-│   │   ├── hospital.py          # ER bed capacity & hospital management
-│   │   ├── incident.py          # Citizen SOS & dispatcher approval API
-│   │   └── ...                  # Agent-specific REST routers
+│   ├── main.py                          # FastAPI entry point, lifespan, WebSocket
+│   ├── agents/
+│   │   ├── accessibility.py             # Multi-modal input normalisation
+│   │   ├── city_state.py                # Structural causal model of the city
+│   │   ├── clinical_outcome.py          # Time-to-treatment estimation
+│   │   ├── communication.py             # Multi-channel dispatch
+│   │   ├── coordinator.py               # Incident classification
+│   │   ├── decision_fusion.py           # 5-factor fusion + counterfactual
+│   │   ├── hospital_intelligence.py     # Two-stage ranking, specialty gate
+│   │   ├── learning.py                  # Stub
+│   │   ├── local_router.py              # A* over the OpenStreetMap graph
+│   │   ├── prediction.py                # ETA + weather adjustment
+│   │   ├── route_optimization.py        # 3-tier routing + quota cache
+│   │   ├── traffic_intelligence.py      # Segment congestion
+│   │   └── triage.py                    # Weighted-keyword classifier
+│   ├── bus/event_bus.py                 # Async in-process pub/sub
+│   ├── models/schemas.py                # Pydantic contracts
+│   ├── routers/                         # FastAPI routers, one per domain
+│   │   ├── chat.py  city.py  driver.py  hospital.py  incident.py  …
 │   ├── data/
-│   │   ├── incidents_db.json    # Persistent incident database
+│   │   ├── bengaluru_road_graph.json.gz # 112k-node graph (built, committed)
+│   │   ├── hospital_capabilities.json   # Curated capability profiles
 │   │   └── sample_road_network.json
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx              # React router & role protection
-│   │   ├── context/
-│   │   │   └── AuthContext.jsx  # Role-based user authentication
-│   │   ├── views/               # Portals for 4 user roles
-│   │   │   ├── CitizenDashboard.jsx    # Citizen SOS & live tracking
-│   │   │   ├── DispatcherDashboard.jsx # City Command Center & AI rationale
-│   │   │   ├── DriverDashboard.jsx     # Paramedic field app & live reroute
-│   │   │   ├── HospitalDashboard.jsx   # ER desk & bed availability terminal
-│   │   │   └── Login.jsx               # Hub-wise & role selection screen
-│   │   ├── components/
-│   │   │   ├── AIRationale.jsx         # Fused AI factor breakdown modal
-│   │   │   ├── LiveEmergencyChat.jsx   # Multi-channel WebSocket chat
-│   │   │   ├── MapOverlay.jsx          # Leaflet map visualization component
-│   │   │   └── SharedShell.jsx         # Header & navigation wrapper
-│   │   ├── index.css
-│   │   └── main.jsx
-│   ├── package.json
-│   └── vite.config.js
-└── README.md
+│   ├── scripts/
+│   │   ├── build_road_graph.py          # Fetch + compact the OSM graph
+│   │   ├── preflight.py                 # Pre-demo health check
+│   │   └── simulate_workflow.py
+│   ├── tests/test_scenarios.py          # 24 behavioural tests
+│   ├── requirements.txt
+│   └── requirements-dev.txt
+└── frontend/
+    └── src/
+        ├── App.jsx                      # Routes + demo role gate (not auth)
+        ├── index.css                    # Design tokens, provenance styling
+        ├── context/AuthContext.jsx      # Role/session state
+        ├── components/
+        │   ├── AIRationale.jsx          # Trade-off + outcome panel
+        │   ├── CityControls.jsx         # Disruption interventions
+        │   ├── LiveEmergencyChat.jsx    # Per-incident channel
+        │   ├── MapOverlay.jsx           # Routes, markers, closures, congestion
+        │   ├── SharedShell.jsx          # Portal frame + live health
+        │   └── ui.jsx                   # Shared primitives
+        └── views/                       # Landing, Login + 4 role portals
 ```
 
 ---
 
-## 👥 Role-Based Portals
+## Getting started
 
-| Portal | URL Path | Key Responsibilities |
-| :--- | :--- | :--- |
-| **Citizen Mobile App** | `/citizen` | One-tap SOS, 2-Phase live map tracking, standby paramedic backup request, live Chat. |
-| **City Dispatch Control** | `/dispatcher` | Real-time incident list, AI Decision Rationale breakdown, hospital override & approval. |
-| **Paramedic Field App** | `/driver` | Hub unit login (`AMB-UNIT-04`, etc.), Stage 1/2 navigation, Uber-style live hospital rerouting. |
-| **Hospital ER Terminal** | `/hospital` | Hospital selection (Aster CMI, Manipal, Fortis, etc.), ER bed tracking, incoming patient triage. |
+**Prerequisites:** Python 3.11+, Node.js 18+
 
----
+### Backend
 
-## 🛰️ API Endpoints Reference
-
-### Incident Management (`/api/incidents`)
-* `POST /api/incidents` — Submit citizen SOS emergency report.
-* `GET /api/incidents/{incident_id}` — Poll incident status, hospital ER details, & 2-phase route telemetry.
-* `GET /api/incidents` — Dispatcher list of all active incidents.
-* `POST /api/incidents/{incident_id}/approve` — Approve AI action plan or override hospital assignment.
-* `POST /api/incidents/{incident_id}/arrived` — Mark arrival at patient pickup or hospital ER.
-* `POST /api/incidents/{incident_id}/request_ambulance` — Request mid-incident paramedic backup.
-
-### Driver & Responder API (`/api/driver`)
-* `GET /api/driver/active` — Fetch active dispatches filtered by vehicle service & hub.
-* `POST /api/driver/claim` — First responder claims emergency dispatch.
-* `POST /api/driver/arrived_pickup` — Mark Stage 1 arrival (Patient Picked Up $\rightarrow$ transition to Stage 2 hospital route).
-* `POST /api/driver/change_hospital` — Driver live hospital reroute (recomputes Google route & syncs PWA).
-
-### Multi-Channel Live Chat (`/api/chat` & `/ws/chat`)
-* `GET /api/chat/{incident_id}/messages` — Fetch chat history for an incident.
-* `POST /api/chat/{incident_id}/send` — Send message to chat channel.
-* `WebSocket /ws/chat/{incident_id}` — Real-time WebSockets communication stream.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-* **Python 3.9+**
-* **Node.js 18+**
-
-### 1. Backend Setup
 ```bash
-cd backend
-python -m venv venv
-
-# Windows:
-.\venv\Scripts\activate
-# Linux/macOS:
-source venv/bin/activate
-
-pip install -r requirements.txt
-
-# (Optional) Set Google Routes API key for live turn-by-turn routing:
-# export GOOGLE_ROUTES_API_KEY="your_api_key_here"
-
-uvicorn main:app --reload --port 8000
+cd backend && python -m venv venv && ./venv/Scripts/activate && pip install -r requirements.txt
 ```
-* Backend REST API & WebSockets will run at `http://localhost:8000`.
-* API documentation available at `http://localhost:8000/docs`.
 
-### 2. Frontend Setup
+Copy `.env.example` to `.env` and add your keys:
+
+```
+GOOGLE_ROUTES_API_KEY=...      # backend key — Application restrictions MUST be None
+OPENWEATHER_API_KEY=...
+GOOGLE_MAPS_JS_API_KEY=...     # browser key — restrict to http://localhost:5173/*
+```
+
+> The Routes key must **not** carry an HTTP-referrer restriction — that
+> silently rejects every server-side call. Enable **Routes API** in Google
+> Cloud Console and link a billing account; it 403s without one even on the
+> free tier.
+
+Build the road graph once (~30 s):
+
 ```bash
-cd frontend
-npm install
-npm run dev
+cd backend && ./venv/Scripts/python.exe scripts/build_road_graph.py
 ```
-* Frontend PWA will run at `http://localhost:5173` (or `http://localhost:5174`).
+
+Verify everything before you rely on it:
+
+```bash
+cd backend && ./venv/Scripts/python.exe scripts/preflight.py
+```
+
+Checks all three keys, both routing tiers, the graph, the capability table and
+OpenAPI generation. The app runs without any keys — it degrades to the offline
+router and says so.
+
+```bash
+cd backend && ./venv/Scripts/python.exe -m uvicorn main:app --reload --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Runs at `http://localhost:5173`. API calls go through the Vite proxy
+(`/api`, `/health`, `/ws`), so there is no backend URL hardcoded in the client.
+
+### Tests
+
+```bash
+cd backend && pip install -r requirements-dev.txt && ./venv/Scripts/python.exe -m pytest tests/ -q
+```
+
+24 tests covering triage, offline routing, causal displacement, outcome
+estimation and the capability table. None require network access.
 
 ---
 
-## 📄 License
-Developed for RapidGrid / GeoAgentic AI Emergency Response Platform.
+## Portals
+
+| Portal | Path | Purpose |
+| :-- | :-- | :-- |
+| Citizen | `/citizen` | Report an emergency, track both response phases, message the crew |
+| City dispatch | `/dispatcher` | Review the plan, see the trade-off, override, dispatch, inject disruptions |
+| Field unit | `/driver` | Two-stage navigation, mid-transport hospital change |
+| Emergency department | `/hospital` | Inbound patients, ICU capacity and divert |
+
+---
+
+## API
+
+Interactive docs at `http://localhost:8000/docs`.
+
+**Incidents** `POST /api/incidents` · `GET /api/incidents/` · `GET /api/incidents/{id}` ·
+`POST /api/incidents/{id}/approve` · `POST /api/incidents/{id}/arrived` ·
+`POST /api/incidents/{id}/request_ambulance` · `POST /api/incidents/clear`
+
+**Driver** `GET /api/driver/active` · `POST /api/driver/claim` ·
+`POST /api/driver/arrived_pickup` · `POST /api/driver/change_hospital`
+
+**Hospital** `POST /api/hospital/rank` · `GET /api/hospital/list` ·
+`GET /api/hospital/{id}/incoming` · `PATCH /api/hospital/{id}/resources`
+(divert genuinely removes the facility from routing)
+
+**City model** `GET /api/city/state` · `GET /api/city/overlay` ·
+`GET /api/city/roads` · `POST /api/city/close` · `POST /api/city/incident` ·
+`POST /api/city/conditions` · `GET /api/city/explain/{edge_id}` ·
+`POST /api/city/clear`
+
+**Chat** `GET /api/chat/{id}/messages` · `POST /api/chat/{id}/send` ·
+`WS /ws/chat/{id}` — one channel per incident, shared by all roles.
+WebSocket delivers; HTTP is the durable write path and the fallback.
+
+**Agents** `POST /api/fusion/combine` · `POST /api/route/compute` ·
+`POST /api/traffic/analyse` · `POST /api/accessibility/report` ·
+`POST /api/coordinator/coordinate` · `POST /api/communication/dispatch` ·
+`POST /api/learning/dispatch_decision`
+
+**Platform** `GET /health` — includes routing tier status, quota telemetry and
+live city-model state.
+
+---
+
+## Technology
+
+**Frontend** React 18, Vite, Tailwind CSS v4, Leaflet, Lucide
+**Backend** FastAPI, Pydantic v2, asyncio, Uvicorn, httpx
+**Data** OpenStreetMap (Overpass), Google Routes API v2, OpenWeather
+**State** In-memory with JSON snapshotting (`incidents_db.json`, gitignored —
+it is per-demo runtime state, not source). Not a production datastore; there
+is no concurrency control.
+
+---
+
+## Known limitations
+
+Stated plainly, because a system that hides these is harder to trust:
+
+1. **No authentication.** Role selection grants the role.
+2. **Incident state is in-memory**, snapshotted to JSON. No locking, no
+   transactions, lost on a crash between writes.
+3. **Traffic coefficients are uncalibrated.**
+4. **No live hospital data.** Capability is curated; availability is modelled.
+5. **The Learning Agent is a stub.**
+6. **Single-incident assumption.** No contention for a shared fleet.
+7. **`compute_route` is synchronous** inside an async pipeline; a slow upstream
+   call blocks the event loop. The response cache limits the exposure.
+
+---
+
+## License
+
+Developed for the RapidGrid / GeoAgentic emergency response platform.
