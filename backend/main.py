@@ -34,11 +34,12 @@ from agents.accessibility import accessibility_agent
 from agents.communication import communication_agent
 from agents.coordinator import coordinator_agent
 from agents.learning import learning_agent
+from agents.city_state import city_state
 from agents.local_router import local_router
 from agents.prediction import prediction_agent
 from agents.route_optimization import route_agent
 from agents.traffic_intelligence import traffic_agent
-from routers import chat, accessibility, communication, coordinator, fusion, hospital, learning, prediction, routing, traffic, incident, driver
+from routers import chat, accessibility, city, communication, coordinator, fusion, hospital, learning, prediction, routing, traffic, incident, driver
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -78,6 +79,28 @@ async def lifespan(app: FastAPI):
             "degrade to A* instead of straight lines.",
             local_router.meta.get("node_count", "?"),
         )
+        # The causal city model runs on the same graph: time of day and
+        # weather set the baseline, and closures displace traffic onto
+        # neighbouring roads rather than making it disappear.
+        if city_state.attach(local_router):
+            try:
+                from agents.prediction import prediction_agent
+                import httpx
+
+                if prediction_agent.api_key:
+                    async with httpx.AsyncClient(timeout=6.0) as client:
+                        resp = await client.get(
+                            "https://api.openweathermap.org/data/2.5/weather",
+                            params={"lat": 12.9716, "lon": 77.5946,
+                                    "appid": prediction_agent.api_key},
+                        )
+                    if resp.status_code == 200:
+                        condition = (resp.json().get("weather") or [{}])[0].get("main")
+                        if condition:
+                            city_state.set_weather(condition)
+                            logger.info("City model seeded with live weather: %s", condition)
+            except Exception:
+                logger.warning("Could not seed live weather; city model starts clear")
     else:
         logger.warning(
             "Offline routing tier UNAVAILABLE - run scripts/build_road_graph.py"
@@ -141,6 +164,7 @@ app.include_router(learning.router)
 app.include_router(incident.router)
 app.include_router(driver.router)
 app.include_router(chat.router)
+app.include_router(city.router)
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +183,9 @@ async def health():
         "status": "healthy",
         "service": "geoagentic-backend",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "city_model": (
+            city_state.snapshot() if city_state.ready else {"status": "unattached"}
+        ),
         "routing": {
             "live_api_key_configured": bool(route_agent.api_key),
             "offline_graph_available": local_router.available,

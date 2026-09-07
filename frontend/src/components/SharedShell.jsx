@@ -79,7 +79,7 @@ export default function SharedShell({ children }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-field">
-      <header className="sticky top-0 z-40 border-b border-rule-ink bg-ink">
+      <header className="sticky top-0 z-50 border-b border-rule-ink bg-ink">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-sm bg-signal text-white">

@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Check, CornerUpRight, X } from 'lucide-react';
 import MapOverlay from '../components/MapOverlay';
 import AIRationale from '../components/AIRationale';
+import CityControls from '../components/CityControls';
 import {
   Panel,
   PanelHead,
@@ -37,6 +38,7 @@ export default function DispatcherDashboard() {
   const [conn, setConn] = useState('ok');
   const [lastOk, setLastOk] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [overlay, setOverlay] = useState({ closures: [], congestion: [] });
   const failures = useRef(0);
 
   useEffect(() => {
@@ -94,6 +96,19 @@ export default function DispatcherDashboard() {
     null;
   const selected =
     incidents.find((i) => i.incident_id === selectedId) || newestActionable;
+
+  const loadOverlay = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/city/overlay?limit=300');
+      if (res.ok) setOverlay(await res.json());
+    } catch { /* the map still renders without the city overlay */ }
+  }, []);
+
+  useEffect(() => {
+    loadOverlay();
+    const timer = setInterval(loadOverlay, 8000);
+    return () => clearInterval(timer);
+  }, [loadOverlay]);
 
   const approve = async (hospital = null) => {
     if (!selected?.action_plan) return;
@@ -260,6 +275,21 @@ export default function DispatcherDashboard() {
                       <span className="inline-block h-[3px] w-4 rounded-full bg-signal" />
                       Phase 2 · to ER
                     </span>
+                    {overlay.closures?.length > 0 && (
+                      <span className="flex items-center gap-1.5 text-critical">
+                        <span
+                          className="inline-block h-[3px] w-4"
+                          style={{ backgroundImage: 'repeating-linear-gradient(90deg,#59114d 0 2px,transparent 2px 5px)' }}
+                        />
+                        Closed
+                      </span>
+                    )}
+                    {overlay.congestion?.length > 0 && (
+                      <span className="flex items-center gap-1.5 text-text-muted">
+                        <span className="inline-block h-[4px] w-4 rounded-full" style={{ background: '#c1121f', opacity: 0.55 }} />
+                        Displaced
+                      </span>
+                    )}
                   </div>
                 }
               />
@@ -276,6 +306,8 @@ export default function DispatcherDashboard() {
                         : null
                     }
                     hub={view.phase1_hub}
+                    closures={overlay.closures}
+                    congestion={overlay.congestion}
                     activePhase={selected.status === 'dispatched' ? 1 : 2}
                     className="!rounded-none !border-0"
                   />
@@ -390,6 +422,8 @@ export default function DispatcherDashboard() {
 
         {/* ---- Rationale -------------------------------------------------- */}
         <div className="grid content-start gap-3 md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:grid-cols-1 xl:max-h-[calc(100vh-150px)] xl:overflow-y-auto">
+          <CityControls onChange={loadOverlay} />
+
           {plan ? (
             <>
               <AIRationale plan={plan} />

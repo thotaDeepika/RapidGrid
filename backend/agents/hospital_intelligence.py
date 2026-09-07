@@ -149,12 +149,42 @@ def _travel_time_score(distance_m: float) -> float:
     travel_time_s = distance_m / _AVG_SPEED_MPS
     return max(0.0, min(1.0, 1.0 - (travel_time_s / _MAX_TRAVEL_TIME_S)))
 
+def _rebalance_after_gate(
+    weights: list[tuple[str, float]], gated_factor: str
+) -> list[tuple[str, float]]:
+    """
+    Halve the gated capability's weight and give it to travel time.
+
+    The gate is a hard screen: every remaining candidate can deliver the
+    intervention. Continuing to weight that capability heavily makes the
+    engine trade minutes for a difference that no longer changes what
+    treatment the patient receives.
+    """
+    freed = 0.0
+    rebalanced: list[tuple[str, float]] = []
+    for factor, weight in weights:
+        if factor == gated_factor:
+            freed = weight * 0.5
+            rebalanced.append((factor, weight - freed))
+        else:
+            rebalanced.append((factor, weight))
+    if not freed:
+        return weights
+    return [
+        (f, round(w + freed, 4) if f == "travel_time" else w)
+        for f, w in rebalanced
+    ]
+
+
 class HospitalIntelligenceAgent:
     def __init__(self) -> None:
         self._hospitals = []  # Cached list of fetched hospitals
         self._capabilities: dict[str, Any] | None = None
         self._capabilities_by_name: dict[str, Any] = {}
         self._fetch_cache: dict[tuple, tuple[float, list[dict[str, Any]]]] = {}
+        # Facilities an ER desk has put on divert. Keyed by curated id, and
+        # applied during enrichment so it survives catalogue cache rebuilds.
+        self._on_divert: set[str] = set()
     
     def _deterministic_float(self, string_id: str, seed: str) -> float:
         """
@@ -337,6 +367,10 @@ class HospitalIntelligenceAgent:
 
             if profile:
                 curated_hits += 1
+                curated_id = next(
+                    (k for k, v in (self._capabilities or {}).items() if v is profile),
+                    None,
+                )
                 caps = dict(profile["capabilities"])
                 beds_total = profile["beds_total"]
                 icu_total = profile["icu_total"]
@@ -367,6 +401,7 @@ class HospitalIntelligenceAgent:
                 capability_provenance = "simulated"
                 emergency_receiving = True
                 facility_type = "unclassified"
+                curated_id = None
                 display_name = h["name"]
                 note = (
                     "No curated capability profile for this facility - "
@@ -378,13 +413,21 @@ class HospitalIntelligenceAgent:
             beds_available = max(0, int(beds_total * (1.0 - occupancy)))
             icu_available = max(0, int(icu_total * (1.0 - occupancy)))
 
+            # An ER on divert is genuinely removed from emergency routing -
+            # not merely annotated - which is what the terminal promises.
+            diverted = bool(curated_id and curated_id in self._on_divert)
+            if diverted:
+                emergency_receiving = False
+
             hospitals.append({
                 "id": hid,
+                "curated_id": curated_id,
+                "on_divert": diverted,
                 "name": display_name,
                 "lat": h["lat"], "lng": h["lng"],
                 "type": facility_type,
                 "emergency_receiving": emergency_receiving,
-                "icu_available": icu_available,
+                "icu_available": 0 if diverted else icu_available,
                 "icu_total": icu_total,
                 "beds_total": beds_total,
                 "beds_available": beds_available,
@@ -450,6 +493,53 @@ class HospitalIntelligenceAgent:
         return deduped
 
 
+
+    def resolve_key(self, identifier: str) -> str | None:
+        """
+        Map anything the UI might send to a curated profile key.
+
+        The login screen offers blr-* ids, live results carry OSM ids, and
+        people paste names - all three should address the same facility.
+        """
+        if not identifier:
+            return None
+        curated = self._load_capabilities()
+        if identifier in curated:
+            return identifier
+        needle = identifier.lower().strip()
+        for key, entry in curated.items():
+            if entry["name"].lower() == needle:
+                return key
+        for h in self._hospitals:
+            if str(h.get("id")) == str(identifier) and h.get("curated_id"):
+                return h["curated_id"]
+        for key, entry in curated.items():
+            if needle and needle in entry["name"].lower():
+                return key
+        return None
+
+    def set_divert(self, identifier: str, on_divert: bool) -> str | None:
+        """Put a facility on or off divert. Returns the curated key, or None."""
+        key = self.resolve_key(identifier)
+        if key is None:
+            return None
+        if on_divert:
+            self._on_divert.add(key)
+        else:
+            self._on_divert.discard(key)
+        # Drop the catalogue cache so the next ranking reflects the change.
+        self._fetch_cache.clear()
+        logger.info(
+            "Hospital %s (%s) is now %s",
+            key, self._capabilities[key]["name"],
+            "ON DIVERT - excluded from emergency routing" if on_divert else "accepting",
+        )
+        return key
+
+    @property
+    def diverted(self) -> set[str]:
+        return set(self._on_divert)
+
     async def rank_hospitals(self, request: HospitalRequest) -> HospitalRankingResponse:
         etype = request.emergency_type.value
         weights = WEIGHT_TABLES.get(etype, WEIGHT_TABLES["general"])
@@ -499,6 +589,14 @@ class HospitalIntelligenceAgent:
                 )
                 hospitals = qualified
                 gate_applied = True
+
+                # Once the gate has screened for capability, time should decide
+                # among the survivors - which is exactly how bypass protocols
+                # work: take a STEMI past the nearest ER to a PCI centre, then
+                # to the NEAREST PCI centre. Leaving the full capability weight
+                # in place double-counted it and sent patients past a closer
+                # cath lab to a marginally better-equipped one, arriving later.
+                weights = _rebalance_after_gate(weights, factor)
 
         entries: list[HospitalEntry] = []
 

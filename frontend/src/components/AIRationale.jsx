@@ -136,6 +136,88 @@ function TradeOff({ winner, runnerUp }) {
   );
 }
 
+/**
+ * Time to definitive treatment.
+ *
+ * The headline number, because minutes on the road are only a proxy for the
+ * thing that decides the outcome. A nearer hospital that cannot deliver the
+ * intervention has to transfer the patient onward, which is where the real
+ * time goes - and that is what justifies driving past it.
+ */
+function OutcomeCard({ outcome }) {
+  if (!outcome?.chosen) return null;
+  const { chosen, alternative, verdict, outcome_delta_minutes: delta } = outcome;
+
+  const Bar = ({ entry, chosen: isChosen }) => {
+    const scale = Math.max(chosen.total_minutes, alternative?.total_minutes ?? 0, entry.target_minutes) * 1.05;
+    const seg = (v, cls, title) =>
+      v > 0 && (
+        <span
+          title={`${title}: ${v.toFixed(1)} min`}
+          className={cls}
+          style={{ width: `${(v / scale) * 100}%` }}
+        />
+      );
+    return (
+      <div className="py-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className={`truncate text-[12px] ${isChosen ? 'font-semibold text-text' : 'text-text-muted'}`}>
+            {entry.hospital_name}
+          </span>
+          <span
+            className={`shrink-0 font-mono text-[12px] font-bold ${
+              entry.within_target ? 'text-verified' : 'text-critical'
+            }`}
+          >
+            {entry.total_minutes.toFixed(0)} min
+          </span>
+        </div>
+        <div className="mt-1.5 flex h-2 w-full overflow-hidden rounded-full bg-paper-sunk">
+          {seg(entry.to_patient_minutes + entry.activation_minutes, 'bg-rule-strong', 'Dispatch and drive to patient')}
+          {seg(entry.on_scene_minutes, 'bg-text-faint', 'On scene')}
+          {seg(entry.to_hospital_minutes, 'bg-signal', 'Transport to hospital')}
+          {seg(entry.in_hospital_minutes, 'bg-ink-raised', 'In-hospital workup')}
+          {seg(entry.transfer_minutes, 'bg-critical', 'Secondary transfer')}
+        </div>
+        {entry.requires_transfer && (
+          <p className="mt-1.5 t-micro text-critical">
+            Needs onward transfer for {entry.intervention} (+{entry.transfer_minutes.toFixed(0)} min)
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <section className="border-t border-rule px-4 py-3.5">
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <span className="eyebrow">{chosen.metric}</span>
+        <Provenance kind="simulated">Modelled</Provenance>
+      </div>
+      <p className="mb-2 t-micro text-text-faint">
+        Target {chosen.target_minutes.toFixed(0)} min · {chosen.guideline}
+      </p>
+
+      <div className="divide-y divide-rule/60">
+        <Bar entry={chosen} chosen />
+        {alternative && <Bar entry={alternative} />}
+      </div>
+
+      {verdict && (
+        <p
+          className={`mt-2.5 rounded-sm border px-3 py-2 text-[12px] leading-relaxed ${
+            delta > 1
+              ? 'border-verified/30 bg-verified-wash text-verified'
+              : 'border-rule bg-paper-sunk text-text-muted'
+          }`}
+        >
+          {verdict}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function AIRationale({ plan }) {
   if (!plan) return null;
 
@@ -181,6 +263,8 @@ export default function AIRationale({ plan }) {
           </p>
         </div>
       )}
+
+      <OutcomeCard outcome={plan.clinical_outcome} />
 
       <TradeOff winner={ranked[0]} runnerUp={ranked[1]} />
 
