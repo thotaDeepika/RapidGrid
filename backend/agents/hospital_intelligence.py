@@ -419,12 +419,20 @@ class HospitalIntelligenceAgent:
             if diverted:
                 emergency_receiving = False
 
+            # Prefer the curated profile's coordinate. It is resolved against
+            # OpenStreetMap by scripts/resolve_hospital_coords.py, whereas the
+            # seed list was hand-written and had 24 of 30 entries more than
+            # 700 m out - which is how a patient at MSRIT was told Ramaiah
+            # Memorial was 10 minutes away when it is 595 m down the road.
+            lat = profile.get("lat", h["lat"]) if profile else h["lat"]
+            lng = profile.get("lng", h["lng"]) if profile else h["lng"]
+
             hospitals.append({
                 "id": hid,
                 "curated_id": curated_id,
                 "on_divert": diverted,
                 "name": display_name,
-                "lat": h["lat"], "lng": h["lng"],
+                "lat": lat, "lng": lng,
                 "type": facility_type,
                 "emergency_receiving": emergency_receiving,
                 "icu_available": 0 if diverted else icu_available,
