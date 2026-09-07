@@ -79,7 +79,10 @@ export default function LiveEmergencyChat({
         const msg = JSON.parse(event.data);
         setMessages((prev) =>
           prev.some(
-            (m) => m.timestamp === msg.timestamp && m.message === msg.message,
+            (m) =>
+              m.message === msg.message &&
+              m.sender_role === msg.sender_role &&
+              m.timestamp === msg.timestamp,
           )
             ? prev
             : [...prev, msg],
@@ -105,17 +108,21 @@ export default function LiveEmergencyChat({
       message: body,
     };
 
-    if (socket.current?.readyState === WebSocket.OPEN) {
-      socket.current.send(JSON.stringify(payload));
-    }
+    // Send over HTTP ONLY. The server broadcasts every POST to all connected
+    // sockets - including this one - so the sender still sees it instantly.
+    // Sending over both transports posted the message twice: the WebSocket
+    // handler and the POST handler each call broadcast(), and the two copies
+    // land a second apart, so a timestamp-based dedupe cannot collapse them.
     try {
-      await fetch(`/api/chat/${incidentId}/send`, {
+      const res = await fetch(`/api/chat/${incidentId}/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      if (!res.ok) throw new Error();
     } catch {
       setTransport('offline');
+      setText(body); // put the unsent message back rather than losing it
     }
   };
 

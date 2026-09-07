@@ -508,6 +508,16 @@ class FusionResponse(BaseModel):
         default_factory=list,
         description="Alternate routes for dispatcher review.",
     )
+    clinical_outcome: Optional[dict] = Field(
+        default=None,
+        description=(
+            "Modelled time-to-definitive-treatment for the chosen hospital and "
+            "the runner-up (door-to-balloon, door-to-needle, golden hour). "
+            "Estimated from guideline targets, not measured - always labelled "
+            "as simulated in the UI."
+        ),
+    )
+
 
 
 # ---------------------------------------------------------------------------

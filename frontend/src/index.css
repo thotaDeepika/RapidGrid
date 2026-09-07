@@ -326,6 +326,22 @@
 .leaflet-container {
   font-family: var(--font-body) !important;
   background: var(--color-paper-sunk) !important;
+
+  /* Leaflet gives its panes and controls z-index values from 200 up to 1000.
+     Because .leaflet-container is positioned but has no z-index of its own, it
+     creates no stacking context - so those values compete with the rest of the
+     page and the map paints straight over the sticky header when you scroll.
+     Giving the container its own stacking context traps that whole scale
+     inside the map, where it belongs. */
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
+
+  /* Leaflet draws its canvas and tiles wider than the viewport as a panning
+     buffer. Leaflet's own stylesheet clips that, but be explicit: without it
+     the buffer leaks past the container and shows up as page overflow on a
+     narrow screen. */
+  overflow: hidden;
 }
 
 .map-tinted .leaflet-tile-pane {

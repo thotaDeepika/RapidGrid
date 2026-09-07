@@ -185,24 +185,24 @@ class TrafficIntelligenceAgent:
 
     # -- event bus integration ------------------------------------------------
 
-    async def get_live_data(self) -> TrafficSnapshot:
+    async def get_live_data(self, bounding_box: dict | None = None) -> TrafficSnapshot:
         """Simulate fetching live data from an external API."""
         if getattr(self, '_simulate_api_failure', False):
             raise ConnectionError("External Traffic API unavailable (503 Service Unavailable)")
-        return self.get_snapshot()
+        return self.get_snapshot(bounding_box)
 
-    async def publish_snapshot(self) -> None:
+    async def publish_snapshot(self, bounding_box: dict | None = None) -> None:
         """
         Publishes the current traffic snapshot to the event bus.
         Normally this would be on a polling loop.
         Handles Scenario 3: Graceful fallback when API fails.
         """
         try:
-            snapshot = await self.get_live_data()
+            snapshot = await self.get_live_data(bounding_box)
         except Exception as e:
             logger.warning(f"Traffic API failure: {e}. Falling back to cached historical data.")
             # Scenario 3: Fall back to cached data, mark degraded, lower confidence
-            snapshot = self.get_snapshot()
+            snapshot = self.get_snapshot(bounding_box)
             
             # Degrade confidence by 30% and mark as simulated
             for segment in snapshot.segments:

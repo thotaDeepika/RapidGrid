@@ -25,3 +25,6 @@ build/
 skills-lock.json
 # Runtime incident state - seeded per demo, not source
 backend/data/incidents_db.json
+
+# Python virtualenv
+backend/venv/

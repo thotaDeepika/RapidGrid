@@ -27,6 +27,7 @@ const COLOR = {
   phase1: '#003b36',
   phase2: '#e98a15',
   closure: '#59114d',
+  congestion: '#c1121f',
   hub: '#003b36',
   patient: '#e98a15',
   hospital: '#012622',
@@ -61,6 +62,7 @@ export default function MapOverlay({
   hospital,
   hub,
   closures = [],
+  congestion = [],
   activePhase = 2,
   height = '400px',
   theme = 'light',
@@ -113,9 +115,28 @@ export default function MapOverlay({
     const p2 = toLatLngs(routeCoordinates);
     const bounds = [];
 
-    // Closures first, so route lines draw over them.
+    // Displaced congestion sits at the very bottom - it is the state of the
+    // city, not a property of this route. Redder means more displaced traffic.
+    congestion.forEach((seg) => {
+      const pts = toLatLngs(seg.coordinates ?? seg);
+      if (pts.length < 2) return;
+      const severity = Math.min(1, ((seg.multiplier ?? 1) - 1) / 1.4);
+      L.polyline(pts, {
+        color: COLOR.congestion,
+        weight: 3 + severity * 6,
+        opacity: 0.18 + severity * 0.5,
+        lineCap: 'round',
+      })
+        .bindPopup(
+          `<b>${seg.road ?? 'Road'}</b><br>Congestion x${(seg.multiplier ?? 1).toFixed(2)}` +
+            '<br><i>Displaced by a nearby closure (modelled)</i>',
+        )
+        .addTo(group);
+    });
+
+    // Closures next, so route lines draw over them.
     closures.forEach((segment) => {
-      const pts = toLatLngs(segment);
+      const pts = toLatLngs(segment.coordinates ?? segment);
       if (pts.length >= 2) {
         L.polyline(pts, {
           color: COLOR.closure,
@@ -124,7 +145,7 @@ export default function MapOverlay({
           dashArray: '2 7',
           lineCap: 'butt',
         })
-          .bindPopup('<b>Road closed</b><br>Excluded from routing')
+          .bindPopup(`<b>Road closed</b><br>${segment.road ?? ''}<br>Excluded from routing`)
           .addTo(group);
         bounds.push(...pts);
       }
@@ -190,7 +211,7 @@ export default function MapOverlay({
         /* bounds can be degenerate while data is still arriving */
       }
     }
-  }, [routeCoordinates, phase1Coordinates, origin, hospital, hub, closures, activePhase]);
+  }, [routeCoordinates, phase1Coordinates, origin, hospital, hub, closures, congestion, activePhase]);
 
   return (
     <div

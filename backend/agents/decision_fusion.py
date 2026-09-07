@@ -28,6 +28,7 @@ import logging
 import uuid
 from typing import Any
 
+from agents.clinical_outcome import compare as compare_outcomes
 from agents.hospital_intelligence import hospital_agent
 from agents.prediction import prediction_agent
 from agents.route_optimization import route_agent
@@ -321,6 +322,36 @@ class DecisionFusionEngine:
             route_failed=route_failed,
         )
 
+        # -- 8b. Clinical outcome ---------------------------------------------
+        # Minutes are a proxy; time-to-definitive-treatment is the outcome the
+        # decision actually turns on. This is what makes the specialty bypass
+        # legible: driving further can still reach the cath lab sooner, because
+        # the nearer hospital would have to transfer the patient onward.
+        outcome = None
+        ranked = hospital_result.ranked_hospitals
+        if len(ranked) >= 2:
+            try:
+                outcome = compare_outcomes(
+                    emergency_type=etype,
+                    chosen=ranked[0],
+                    alternative=ranked[1],
+                    to_patient_seconds=None,
+                    chosen_to_hospital_seconds=ranked[0].road_eta_seconds or route_result.eta,
+                    alternative_to_hospital_seconds=(
+                        ranked[1].road_eta_seconds or route_result.eta
+                    ),
+                )
+                if outcome:
+                    logger.info(
+                        "Outcome: %s %.0f min vs target %.0f (%s)",
+                        outcome["chosen"]["metric"],
+                        outcome["chosen"]["total_minutes"],
+                        outcome["chosen"]["target_minutes"],
+                        outcome["verdict"],
+                    )
+            except Exception:
+                logger.exception("Outcome estimation failed for %s", incident_id)
+
         # -- 9. Assemble response ---------------------------------------------
         response = FusionResponse(
             incident_id=incident_id,
@@ -336,6 +367,7 @@ class DecisionFusionEngine:
             ),
             all_hospitals=hospital_result.ranked_hospitals,
             alternate_routes=route_result.alternate_routes,
+            clinical_outcome=outcome,
         )
 
         # -- 10. Publish to bus -----------------------------------------------

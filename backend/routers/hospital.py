@@ -9,6 +9,8 @@ Endpoints:
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from agents.hospital_intelligence import hospital_agent
@@ -23,6 +25,8 @@ class HospitalResourceUpdate(BaseModel):
     beds_available: int | None = None
     note: str | None = None
 from routers.incident import ACTIVE_INCIDENTS
+
+logger = logging.getLogger("geoagentic.router.hospital")
 
 router = APIRouter(prefix="/api/hospital", tags=["Hospital Intelligence"])
 
@@ -168,27 +172,39 @@ async def get_incoming_cases(hospital_id: str, name: str = None):
 
 @router.patch("/{hospital_id}/resources")
 async def update_resources(hospital_id: str, update: HospitalResourceUpdate):
-    """Scenario 7 - Hospital updates resource availability."""
-    for h in hospital_agent._hospitals:
-        if h["id"] == hospital_id:
-            h["icu_available"] = 10 if update.icu_available else 0
-            
-            # Re-evaluate all dispatched cases bound for this hospital!
-            # Since this is a simple mock, we simulate rerouting in the background
-            from routers.incident import ACTIVE_INCIDENTS
-            from agents.decision_fusion import fusion_engine
-            import asyncio
-            
-            for inc in ACTIVE_INCIDENTS:
-                if inc.get("status") == "dispatched":
-                    action_plan = inc.get("action_plan", {})
-                    rec_hosp = action_plan.get("recommended_hospital", {})
-                    if (isinstance(rec_hosp, dict) and rec_hosp.get("hospital_id") == hospital_id) or \
-                       (isinstance(rec_hosp, str) and rec_hosp == hospital_id):
-                        if not update.icu_available:
-                            # Resource exhausted! Reroute!
-                            if "citizen_view" in inc:
-                                inc["citizen_view"]["message"] = f"REROUTING: {h['name']} is now full. Finding alternate route..."
-            
-            return {"status": "updated", "icu_available": h["icu_available"]}
-    raise HTTPException(status_code=404, detail="Hospital not found")
+    """
+    An ER desk setting its own capacity.
+
+    Putting a facility on divert removes it from the routing engine's candidate
+    list for new emergency calls - it is a real control, not an annotation.
+    Accepts a curated id (blr-005), an OSM id, or the hospital name, because
+    different parts of the app address hospitals differently.
+    """
+    key = hospital_agent.set_divert(hospital_id, on_divert=not update.icu_available)
+    if key is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No hospital matched '{hospital_id}'. Use a curated id "
+                f"(e.g. blr-005), an OSM id, or the full facility name."
+            ),
+        )
+
+    profile = hospital_agent._load_capabilities()[key]
+    logger.info(
+        "ER capacity update: %s -> %s",
+        profile["name"], "accepting" if update.icu_available else "on divert",
+    )
+    return {
+        "status": "updated",
+        "hospital_id": key,
+        "name": profile["name"],
+        "accepting": update.icu_available,
+        "on_divert": not update.icu_available,
+        "effect": (
+            "Excluded from routing for new emergency calls."
+            if not update.icu_available
+            else "Available for routing."
+        ),
+        "diverted_facilities": sorted(hospital_agent.diverted),
+    }
