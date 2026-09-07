@@ -271,3 +271,81 @@ class TestHospitalData:
         assert profiles["blr-019"]["capabilities"]["cardiology"] >= 0.95  # Jayadeva
         assert profiles["blr-010"]["capabilities"]["neurology"] >= 0.95   # NIMHANS
         assert profiles["blr-024"]["capabilities"]["trauma_centre"] >= 0.9  # Sanjay Gandhi
+
+
+# ---------------------------------------------------------------------------
+# Hospital coordinates
+# ---------------------------------------------------------------------------
+
+class TestHospitalCoordinates:
+    """
+    Guards the bug where a patient with chest pain at MSRIT was told Ramaiah
+    Memorial was 10 minutes away when it is 595 m down the road. The seeded
+    coordinate was 2.4 km out, in Malleswaram - which is also why selecting
+    Ramaiah surfaced a hospital from that neighbourhood instead.
+    """
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def profiles(cls):
+        import json
+        p = Path(__file__).resolve().parent.parent / "data" / "hospital_capabilities.json"
+        if not p.exists():
+            pytest.skip("capability table missing")
+        return json.loads(p.read_text(encoding="utf-8"))["hospitals"]
+
+    def test_every_profile_carries_a_coordinate(self, profiles):
+        for key, entry in profiles.items():
+            assert "lat" in entry and "lng" in entry, f"{key} has no coordinate"
+
+    def test_coordinates_are_inside_the_bengaluru_bbox(self, profiles):
+        for key, entry in profiles.items():
+            assert 12.70 <= entry["lat"] <= 13.20, f"{key} latitude outside Bengaluru"
+            assert 77.35 <= entry["lng"] <= 77.85, f"{key} longitude outside Bengaluru"
+
+    def test_coordinate_provenance_is_recorded(self, profiles):
+        """Every coordinate says where it came from, so drift is auditable."""
+        allowed = {"openstreetmap", "manual-reviewed", "manual-unverified"}
+        for key, entry in profiles.items():
+            assert entry.get("coord_source") in allowed, f"{key} has no coord_source"
+
+    def test_ramaiah_is_next_to_msrit(self, profiles):
+        """The reported bug, as an assertion."""
+        from agents.local_router import haversine
+        msrit = (13.0297, 77.5645)
+        r = profiles["blr-009"]
+        d = haversine(msrit[0], msrit[1], r["lat"], r["lng"])
+        assert d < 1200, f"Ramaiah is {d:.0f} m from MSRIT - it is under 700 m"
+
+    def test_no_two_hospitals_share_a_location(self, profiles):
+        """Duplicate coordinates mean one of them is wrong."""
+        from agents.local_router import haversine
+        items = list(profiles.items())
+        for i, (k1, a) in enumerate(items):
+            for k2, b in items[i + 1:]:
+                d = haversine(a["lat"], a["lng"], b["lat"], b["lng"])
+                assert d > 50, f"{k1} and {k2} are {d:.0f} m apart"
+
+
+class TestRoutingRegression:
+    def test_cardiac_at_msrit_picks_the_hospital_next_door(self):
+        """
+        End to end: the nearest capable hospital should win when it is 600 m
+        away and every alternative is kilometres off.
+        """
+        import asyncio
+        from agents.hospital_intelligence import hospital_agent
+        from agents.local_router import local_router
+        from models.schemas import Coordinate, EmergencyType, HospitalRequest
+
+        if not local_router.load():
+            pytest.skip("road graph not built")
+
+        res = asyncio.run(hospital_agent.rank_hospitals(HospitalRequest(
+            incident_location=Coordinate(lat=13.0297, lng=77.5645),
+            emergency_type=EmergencyType.CARDIAC,
+        )))
+        top = res.ranked_hospitals[0]
+        assert "Ramaiah" in top.name, f"expected Ramaiah, got {top.name}"
+        if top.road_eta_seconds:
+            assert top.road_eta_seconds < 300, "should be a few minutes, not ten"

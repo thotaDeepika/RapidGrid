@@ -1,3 +1,4 @@
+
 # RapidGrid — demo runbook
 
 A GeoAgentic framework for emergency vehicle movement in Bengaluru. This is the
