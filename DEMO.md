@@ -324,6 +324,22 @@ the weight table and the specialty gate change.
 Beat 7's script already shows 16.2 / 28.8 / 38.9 minutes for one route at
 03:00, peak, and peak-with-rain.
 
+### Hospital coordinates are sourced, not typed
+
+```bash
+cd backend && python -c "import json;d=json.load(open('data/hospital_capabilities.json',encoding='utf-8'))['hospitals'];[print(f\"  {v['coord_source']:<20} {v['lat']:.4f},{v['lng']:.4f}  {v['name'][:40]}\") for v in list(d.values())[:8]]"
+```
+
+Every hospital carries a `coord_source` — `openstreetmap` where the resolver
+matched confidently, `manual-reviewed` where a human checked it against the OSM
+extract, `manual-unverified` for the single facility (Columbia Asia Hebbal,
+since rebranded) with no confident entry.
+
+**Say this:** these were originally hand-written from memory and 24 of 30 were
+more than 700 m out — one of them put a hospital in the wrong neighbourhood
+entirely. They are now resolved from OpenStreetMap, and every one records where
+it came from.
+
 ### The road graph is real OpenStreetMap data
 
 ```bash
@@ -396,6 +412,15 @@ real road ETAs for the shortlist; an explainable fusion layer that states which
 option it rejected and why; and a causal city model where a closure displaces
 traffic onto neighbouring roads.
 
+**"How do you know the hospital locations are right?"**
+We did not, at first — they were hand-written and 24 of 30 were over 700 m out,
+which sent a chest-pain patient at MSRIT to a hospital ten minutes away when
+the right one was 600 m down the road. They are now resolved against
+OpenStreetMap and each records its `coord_source`.
+`scripts/validate_against_apis.py` re-checks all 30 hospitals and 11 hubs
+against both our graph and Google Routes: 0 problems, with the two networks
+agreeing on distance to within 1–15%.
+
 **"What happens if Google goes down?"**
 Beat 8. Turn off the wi-fi and watch.
 
@@ -422,6 +447,7 @@ same ambulance instead of each assuming an infinite fleet.
 | Queue empty | incidents cleared | raise an SOS from Tab 1 |
 | Everything slow | first Overpass call | hospital catalogue caches for 15 min after the first fetch |
 | Port 5173 busy | an old Vite still running | `Get-NetTCPConnection -LocalPort 5173 -State Listen` gives the PID |
+| A hospital looks misplaced | coordinate drift | `python scripts/validate_against_apis.py` names it; `resolve_hospital_coords.py --write` re-resolves |
 
 **Record a backup video the night before.** Venue wi-fi is the one failure the
 offline tier cannot save you from — if the laptop cannot reach the projector,

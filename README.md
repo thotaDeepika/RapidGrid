@@ -133,6 +133,8 @@ modelled values carry hatched badges and dotted underlines.
 - Live traffic routing via Google Routes API v2
 - Live weather via OpenWeather, factored into ETA
 - Hospital **capability** profiles, curated for 30 facilities
+- Hospital **coordinates**, resolved against OpenStreetMap — each carries a
+  `coord_source` of `openstreetmap`, `manual-reviewed` or `manual-unverified`
 - A* pathfinding, honouring closures and congestion
 
 **Modelled — and labelled as such everywhere**
@@ -145,6 +147,12 @@ modelled values carry hatched badges and dotted underlines.
   magnitudes unvalidated.
 - Clinical process times — from published guideline targets, not measured
   from live hospital systems.
+- One hospital coordinate — Columbia Asia Hebbal, since rebranded to Manipal
+  Hebbal — has no confident OpenStreetMap entry and is tagged
+  `manual-unverified`. It is the least-trustworthy of the 30 and labelled so.
+- Capability **scores** themselves (cath-lab strength, trauma rating) are
+  informed judgement, not sourced per-hospital. Directionally sound; the
+  coordinates have citable provenance, these do not yet.
 
 **Not implemented**
 
@@ -217,8 +225,10 @@ RapidGrid/
 │   ├── scripts/
 │   │   ├── build_road_graph.py          # Fetch + compact the OSM graph
 │   │   ├── preflight.py                 # Pre-demo health check
+│   │   ├── resolve_hospital_coords.py   # Resolve coordinates against OSM
+│   │   ├── validate_against_apis.py     # Cross-check data vs Google + OSM
 │   │   └── simulate_workflow.py
-│   ├── tests/test_scenarios.py          # 24 behavioural tests
+│   ├── tests/test_scenarios.py          # 30 behavioural tests
 │   ├── requirements.txt
 │   └── requirements-dev.txt
 └── frontend/
@@ -260,6 +270,11 @@ GOOGLE_MAPS_JS_API_KEY=...     # browser key — restrict to http://localhost:51
 > silently rejects every server-side call. Enable **Routes API** in Google
 > Cloud Console and link a billing account; it 403s without one even on the
 > free tier.
+
+Only **Routes API** is required. Geocoding, Places, Distance Matrix and Roads
+are not used and currently return `REQUEST_DENIED` on this project — coordinate
+verification runs against OpenStreetMap instead, via
+`scripts/resolve_hospital_coords.py`.
 
 Build the road graph once (~30 s):
 
@@ -308,8 +323,9 @@ Runs at `http://localhost:5173`. API calls go through the Vite proxy
 cd backend && pip install -r requirements-dev.txt && ./venv/Scripts/python.exe -m pytest tests/ -q
 ```
 
-24 tests covering triage, offline routing, causal displacement, outcome
-estimation and the capability table. None require network access.
+30 tests covering triage, offline routing, causal displacement, outcome
+estimation, the capability table and hospital coordinate integrity. None
+require network access.
 
 ---
 
@@ -378,6 +394,8 @@ Stated plainly, because a system that hides these is harder to trust:
    transactions, lost on a crash between writes.
 3. **Traffic coefficients are uncalibrated.**
 4. **No live hospital data.** Capability is curated; availability is modelled.
+   Coordinates are OSM-resolved, but capability *scores* are still judgement
+   calls without a per-hospital citation.
 5. **The Learning Agent is a stub.**
 6. **Single-incident assumption.** No contention for a shared fleet.
 7. **`compute_route` is synchronous** inside an async pipeline; a slow upstream
