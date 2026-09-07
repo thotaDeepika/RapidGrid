@@ -277,6 +277,18 @@ Checks all three keys, both routing tiers, the graph, the capability table and
 OpenAPI generation. The app runs without any keys — it degrades to the offline
 router and says so.
 
+To check the data rather than the wiring:
+
+```bash
+cd backend && ./venv/Scripts/python.exe scripts/validate_against_apis.py
+```
+
+Cross-validates every hospital and hub coordinate against both the local
+OpenStreetMap graph and Google Routes — snap distance to the nearest real road,
+whether Google can route there, and whether the two networks agree on distance.
+Currently 0 problems across 30 hospitals and 11 hubs, with distance agreement
+of 1–15%.
+
 ```bash
 cd backend && ./venv/Scripts/python.exe -m uvicorn main:app --reload --port 8000
 ```

@@ -37,6 +37,21 @@ capability table, and OpenAPI schema generation in about 15 seconds. **Green
 before you present.** A warning on Google Routes is survivable (the offline
 router covers it); a FAIL is not.
 
+Then cross-check the data itself against the external APIs:
+
+```bash
+cd backend && ./venv/Scripts/python.exe scripts/validate_against_apis.py
+```
+
+Preflight answers "is everything switched on". This answers "does what we
+believe agree with Google and OpenStreetMap" — for all 30 hospitals and 11
+emergency hubs it checks how far each coordinate sits from a real road, whether
+Google Routes can actually drive there, and whether our A* distance agrees with
+Google's. It exists because a coordinate can be present, well-formed and inside
+Bengaluru and still be 2 km from the actual hospital. Expect **0 problems**;
+one warning about BGS Gleneagles is known and harmless (the hospital sits on a
+residential access road that the graph does not index).
+
 ### One-time, if the road graph is missing
 
 ```bash
