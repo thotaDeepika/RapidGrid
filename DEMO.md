@@ -253,10 +253,12 @@ slower. A route across town does not, because displacement is local.
 Also show time of day and weather in the same panel — the same route runs
 16.2 min at 03:00, 28.8 at evening peak, 38.9 in the rain.
 
-Ask the causal model to explain any segment:
+Ask the causal model to explain any segment. **This needs a closure to be
+active** — do the road closure above first, or the command below makes one, so
+it works standalone:
 
 ```bash
-EDGE=$(curl -s "http://127.0.0.1:8000/api/city/overlay?limit=5" | python -c "import sys,json;print(json.load(sys.stdin)['congestion'][0]['edge_id'])") && curl -s http://127.0.0.1:8000/api/city/explain/$EDGE
+curl -s -X POST http://127.0.0.1:8000/api/city/close -H "Content-Type: application/json" -d '{"road":"Bellary Road"}' -o /dev/null; EDGE=$(curl -s "http://127.0.0.1:8000/api/city/overlay?limit=5" | python -c "import sys,json;c=json.load(sys.stdin)['congestion'];print(c[0]['edge_id'] if c else '')"); [ -n "$EDGE" ] && curl -s http://127.0.0.1:8000/api/city/explain/$EDGE || echo "No congestion yet - close a road first"
 ```
 
 It returns the causal chain for that segment — which mechanism slowed it and by
