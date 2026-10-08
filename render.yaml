@@ -1,0 +1,19 @@
+# RapidGrid web service. The built React app and the FastAPI API share one
+# host, so the browser's /api and /ws calls match the Vite dev proxy.
+services:
+  - type: web
+    name: rapidgrid
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: main
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    envVars:
+      - key: GOOGLE_ROUTES_API_KEY
+        sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_JS_API_KEY
+        sync: false

@@ -27,8 +27,12 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from agents.accessibility import accessibility_agent
 from agents.communication import communication_agent
@@ -237,6 +241,41 @@ async def websocket_chat_endpoint(websocket: WebSocket, incident_id: str):
                 logger.exception("WebSocket chat message failed for %s", incident_id)
     except WebSocketDisconnect:
         chat.manager.disconnect(websocket, incident_id)
+
+
+# ---------------------------------------------------------------------------
+# Frontend — same origin as /api and /ws when the Vite build is present
+# ---------------------------------------------------------------------------
+
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+
+def _safe_frontend_file(full_path: str) -> Path | None:
+    root = _FRONTEND_DIST.resolve()
+    candidate = (root / full_path).resolve()
+    if candidate != root and root not in candidate.parents:
+        return None
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+if _FRONTEND_DIST.is_dir():
+    _assets = _FRONTEND_DIST / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=_assets), name="frontend-assets")
+
+    @app.get("/", include_in_schema=False)
+    async def frontend_index():
+        return FileResponse(_FRONTEND_DIST / "index.html")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def frontend_spa(full_path: str):
+        found = _safe_frontend_file(full_path)
+        if found is not None:
+            return FileResponse(found)
+        return FileResponse(_FRONTEND_DIST / "index.html")
+
 
 # Touch for per-unit tracking reload
 # Reload for include_ambulance_backup schema update
