@@ -48,6 +48,7 @@ export default function CitizenDashboard() {
 
   const [pollUrl, setPollUrl] = useState(null);
   const [incident, setIncident] = useState(null);
+  const [sending, setSending] = useState(false); // double-submit guard
   const view = incident?.citizen_view ?? null;
 
   const speech = useSpeechToText({ lang: 'en-IN' });
@@ -59,6 +60,7 @@ export default function CitizenDashboard() {
       setUsedVoice(true);
       setDetails((prev) => (prev ? `${prev.trim()} ${finalText}` : finalText).trim());
     });
+    return () => speech.setOnFinal(null);
   }, [speech.setOnFinal]);
 
   useEffect(() => {
@@ -96,15 +98,16 @@ export default function CitizenDashboard() {
           (i) => i.citizen_phone?.trim() === citizenInfo.phone.trim(),
         );
         const latest = mine[mine.length - 1];
-        if (!cancelled && latest?.status === 'failed') {
-          setIncident(latest);
-          setPollUrl(`/api/incidents/${latest.incident_id}`);
-          setError(latest.error || 'Dispatch could not complete your report.');
-          setStage('failed');
-        } else if (!cancelled && latest?.citizen_view) {
+        // Only rejoin in-flight work. Failed/completed reports must not trap the home screen.
+        const active = latest && !['failed', 'completed'].includes(latest.status);
+        if (!cancelled && active?.citizen_view) {
           setIncident(latest);
           setPollUrl(`/api/incidents/${latest.incident_id}`);
           setStage('tracking');
+        } else if (!cancelled && active?.status === 'processing') {
+          setIncident(latest);
+          setPollUrl(`/api/incidents/${latest.incident_id}`);
+          setStage('sending');
         }
       } catch { /* offline: the SOS button still works */ }
     })();
@@ -147,9 +150,13 @@ export default function CitizenDashboard() {
   }, [pollUrl, stage]);
 
   const sendSOS = async () => {
+    if (sending) return; // double-submit guard
+    setSending(true);
     speech.stop();
     navigator.vibrate?.([180, 90, 180]);
     setError(null);
+    setIncident(null);
+    setPollUrl(null);
     setStage('sending');
     try {
       const res = await fetch('/api/incidents', {
@@ -175,6 +182,8 @@ export default function CitizenDashboard() {
     } catch {
       setError('Cannot reach emergency dispatch. Check your connection and try again.');
       setStage('report');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -233,6 +242,8 @@ export default function CitizenDashboard() {
           onClick={() => {
             setStage('home');
             setError(null);
+            setIncident(null);
+            setPollUrl(null);
           }}
           className="tap mb-4 inline-flex items-center gap-1 py-1 t-tag text-text-muted hover:text-text"
         >
@@ -247,7 +258,7 @@ export default function CitizenDashboard() {
           <div className="mt-3 flex items-start gap-2 rounded-sm border border-critical bg-critical-wash px-3 py-2.5 hz-refuse">
             <AlertTriangle size={14} className="mt-px shrink-0 text-critical" />
             <p className="text-[12px] leading-relaxed text-critical">
-              {error || 'Dispatch could not finish routing. Try again or call 112.'}
+              Dispatch could not finish routing this report. You can try again, or call 112.
             </p>
           </div>
         )}
@@ -300,14 +311,14 @@ export default function CitizenDashboard() {
           <span className="t-meta text-text-muted">{locationLabel}</span>
         </div>
 
-        {error && stage === 'report' && (
+        {error && (stage === 'report' || stage === 'failed') && (
           <div className="mt-3 flex items-start gap-2 rounded-sm border border-critical-edge bg-critical-wash px-3 py-2.5">
             <AlertTriangle size={14} className="mt-px shrink-0 text-critical" />
             <p className="text-[12px] leading-relaxed text-critical">{error}</p>
           </div>
         )}
 
-        <Button onClick={sendSOS} size="lg" className="mt-5 w-full">
+        <Button onClick={sendSOS} disabled={sending} size="lg" className="mt-5 w-full">
           {stage === 'failed' ? 'Try again' : 'Send emergency report'}
         </Button>
 
@@ -427,7 +438,7 @@ export default function CitizenDashboard() {
                 : null
             }
             hub={view.phase1_hub}
-            activePhase={dispatched ? 1 : 2}
+            activePhase={incident?.status === 'patient_picked_up' ? 2 : 1}
             className="!rounded-none !border-0"
           />
         </Panel>

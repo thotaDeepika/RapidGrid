@@ -74,35 +74,14 @@ async def list_hospitals():
 
 
 @router.get(
-    "/{hospital_id}",
-    summary="Get details for a specific hospital",
+    "/incoming/all",
+    summary="Return all active incoming emergency cases for the Hospital ER Desk",
 )
-async def get_hospital(hospital_id: str):
-    """Return details for one hospital by ID."""
-    for h in hospital_agent._hospitals:
-        if h["id"] == hospital_id:
-            return {
-                "hospital_id": h["id"],
-                "name": h["name"],
-                "location": {"lat": h["lat"], "lng": h["lng"]},
-                "icu_available": h["icu_available"],
-                "beds_total": h["beds_total"],
-                "beds_available": h["beds_available"],
-                "specialists": h["specialists"],
-                "capabilities": h["capabilities"],
-            }
-    raise HTTPException(
-        status_code=404,
-        detail=f"Hospital '{hospital_id}' not found.",
-    )
-
-
-@router.get("/incoming/all")
 async def get_all_incoming_cases():
     """Return all active incoming emergency cases for the Hospital ER Desk."""
     incoming = []
     for inc in ACTIVE_INCIDENTS:
-        if inc.get("status") in ("dispatched", "awaiting_dispatcher_approval", "processing"):
+        if inc.get("status") in ("dispatched", "awaiting_dispatcher_approval", "processing", "patient_picked_up"):
             cit_view = inc.get("citizen_view") or {}
             action_plan = inc.get("action_plan") or {}
             rec_hosp = action_plan.get("recommended_hospital") or {}
@@ -116,20 +95,25 @@ async def get_all_incoming_cases():
                 "hospital_name": hosp_name,
                 "eta_minutes": cit_view.get("eta_minutes") or 7,
                 "patient_summary": inc.get("details") or inc.get("citizen_text") or "Emergency reported by citizen.",
-                "assigned_driver": inc.get("assigned_driver", "AMB-IND-04")
+                "assigned_driver": inc.get("assigned_driver", "AMB-IND-04"),
+                # Phone numbers needed by HospitalDashboard LiveEmergencyChat contacts prop
+                "citizen_phone": inc.get("citizen_phone"),
+                "unit_phone": inc.get("unit_phone") or cit_view.get("unit_phone"),
             })
     return {"incoming": incoming}
+
 
 @router.get("/{hospital_id}/incoming")
 async def get_incoming_cases(hospital_id: str, name: str = None):
     """Hospital dashboard polls for incoming cases assigned specifically to this hospital."""
     incoming = []
     for inc in ACTIVE_INCIDENTS:
-        if inc.get("status") in ("dispatched", "awaiting_dispatcher_approval", "processing", "completed"):
+        # Include patient_picked_up — that's when the hospital most needs to prepare
+        if inc.get("status") in ("dispatched", "awaiting_dispatcher_approval", "processing", "patient_picked_up", "completed"):
             cit_view = inc.get("citizen_view") or {}
             action_plan = inc.get("action_plan") or {}
             rec_hosp = action_plan.get("recommended_hospital") or {}
-            
+
             hosp_name = cit_view.get("hospital_name")
             if not hosp_name and isinstance(rec_hosp, dict):
                 hosp_name = rec_hosp.get("name")
@@ -166,12 +150,19 @@ async def get_incoming_cases(hospital_id: str, name: str = None):
                     "hospital_name": hosp_name,
                     "eta_minutes": cit_view.get("eta_minutes") or 7,
                     "patient_summary": inc.get("details") or inc.get("citizen_text") or "Emergency reported by citizen.",
-                    "assigned_driver": inc.get("assigned_driver", "AMB-UNIT-04")
+                    "assigned_driver": inc.get("assigned_driver", "AMB-UNIT-04"),
+                    # Phone numbers needed by HospitalDashboard LiveEmergencyChat contacts prop
+                    "citizen_phone": inc.get("citizen_phone"),
+                    "unit_phone": inc.get("unit_phone") or cit_view.get("unit_phone"),
                 })
     return {"incoming": incoming}
 
-@router.patch("/{hospital_id}/resources")
-async def update_resources(hospital_id: str, update: HospitalResourceUpdate):
+
+@router.get(
+    "/{hospital_id}",
+    summary="Get details for a specific hospital",
+)
+async def get_hospital(hospital_id: str):
     """
     An ER desk setting its own capacity.
 
