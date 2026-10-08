@@ -208,16 +208,28 @@ export default function LiveEmergencyChat({
         )}
       </div>
 
+      {speech.error && (
+        <p className="border-t border-rule px-3 pt-2 text-[12px] leading-relaxed text-critical">{speech.error}</p>
+      )}
       <form onSubmit={send} className="flex items-center gap-2 border-t border-rule p-2.5">
         <input
           value={speech.listening && speech.interim ? `${text} ${speech.interim}`.trim() : text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={speech.listening ? 'Listening…' : 'Type or dictate a message…'}
+          placeholder={
+            speech.phase === 'loading'
+              ? 'Loading speech model…'
+              : speech.phase === 'transcribing'
+                ? 'Transcribing…'
+                : speech.listening
+                  ? 'Listening…'
+                  : 'Type or dictate a message…'
+          }
           className="min-w-0 flex-1 rounded-sm border border-rule bg-paper px-3 py-2.5 text-[16px] text-text placeholder:text-text-faint focus:border-signal focus:outline-none lg:py-2 lg:text-[13px]"
         />
         <MicButton
           supported={speech.supported}
           listening={speech.listening}
+          phase={speech.phase}
           onToggle={speech.toggle}
         />
         <button

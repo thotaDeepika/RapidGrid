@@ -1,5 +1,5 @@
 /**
- * Mic toggle for Web Speech dictation.
+ * Mic toggle. Edge dictates live. Firefox records, then transcribes.
  */
 
 import React from 'react';
@@ -8,6 +8,7 @@ import { Mic, MicOff } from 'lucide-react';
 export default function MicButton({
   supported,
   listening,
+  phase = 'idle',
   onToggle,
   title,
   className = '',
@@ -27,18 +28,36 @@ export default function MicButton({
     );
   }
 
+  const working = phase === 'loading' || phase === 'transcribing';
+  const active = listening || working;
+  const label = phase === 'loading'
+    ? 'Loading speech model'
+    : phase === 'transcribing'
+      ? 'Transcribing'
+      : listening
+        ? 'Stop voice input'
+        : 'Start voice input';
+
   return (
     <button
       type="button"
       onClick={onToggle}
-      title={title ?? (listening ? 'Stop listening' : 'Dictate with voice')}
-      aria-label={listening ? 'Stop voice input' : 'Start voice input'}
-      aria-pressed={listening}
+      disabled={working}
+      title={title ?? (phase === 'loading'
+        ? 'Loading the speech model'
+        : phase === 'transcribing'
+          ? 'Transcribing'
+          : listening
+            ? 'Stop listening'
+            : 'Dictate with voice')}
+      aria-label={label}
+      aria-pressed={active}
+      aria-busy={working}
       className={`tap grid h-11 w-11 shrink-0 place-items-center rounded-sm border transition-colors lg:h-9 lg:w-9 ${
-        listening
+        active
           ? 'border-critical bg-critical text-on-ink'
           : 'border-ink bg-paper text-text hover:bg-ink hover:text-on-ink'
-      } ${className}`}
+      } ${working ? 'opacity-80' : ''} ${className}`}
     >
       <Mic size={size} className={listening ? 'live-dot' : ''} />
     </button>

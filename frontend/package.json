@@ -17,6 +17,7 @@
     "vite": "^8.2.0"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@react-google-maps/api": "^2.20.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.344.0",

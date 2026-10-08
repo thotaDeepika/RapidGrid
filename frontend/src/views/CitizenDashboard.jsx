@@ -289,6 +289,7 @@ export default function CitizenDashboard() {
             <MicButton
               supported={speech.supported}
               listening={speech.listening}
+              phase={speech.phase}
               onToggle={speech.toggle}
             />
           </div>
@@ -299,10 +300,18 @@ export default function CitizenDashboard() {
             placeholder="Chest pain, difficulty breathing, road accident… or tap the mic"
             className="mt-2 w-full resize-none rounded-sm border border-rule bg-paper p-3 text-[16px] leading-relaxed text-text placeholder:text-text-faint focus:border-signal focus:outline-none lg:text-[14px]"
           />
-          <span className="mt-2 block t-micro text-text-faint">
-            {speech.listening
-              ? 'Listening… speak clearly.'
-              : 'The more specific you are, the better the hospital match. You can dictate.'}
+          <span className={`mt-2 block t-micro ${speech.error ? 'text-critical' : 'text-text-faint'}`}>
+            {speech.error
+              ? speech.error
+              : speech.phase === 'loading'
+                ? 'Loading the speech model… this happens once.'
+                : speech.phase === 'transcribing'
+                  ? 'Transcribing…'
+                  : speech.listening && speech.engine === 'whisper'
+                    ? 'Listening… tap the mic again when you finish.'
+                    : speech.listening
+                      ? 'Listening… speak clearly.'
+                      : 'The more specific you are, the better the hospital match. You can dictate.'}
           </span>
         </label>
 
