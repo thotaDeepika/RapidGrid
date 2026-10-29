@@ -13,7 +13,7 @@ transfer them onward costs far more time than driving past it.
 > [What is real and what is modelled](#what-is-real-and-what-is-modelled).
 > Nothing is presented as measured unless it is.
 
-For a walkthrough, see **[DEMO.md](DEMO.md)**.
+Try our Application ---- https://rapidgrid.onrender.com
 
 ---
 
