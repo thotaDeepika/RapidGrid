@@ -1,370 +1,620 @@
-/**
- * Landing page.
- *
- * The hero is the use case: an agent that watches every emergency vehicle's
- * route and tells dispatch what to do when it goes wrong.
- * Design identity: bone paper, command ink header, amber CTAs, Archivo Narrow.
- */
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check } from 'lucide-react';
-
-const CAPABILITIES = [
-  {
-    title: 'An agent watches every unit on its route',
-    body: 'Every second it compares each ambulance, police car or fire engine with its planned route. It flags a wrong turn, a closure or accident ahead, a slowdown from rush hour or rain, and a destination hospital that goes on divert; names the cause; predicts the delay and the new arrival time; offers routes round it; and says whether to keep the unit or send a closer one. Each alert shows its steps and numbers, and dispatch decides.',
-  },
-  {
-    title: 'It routes on capability, not just proximity',
-    body: 'A cardiac call goes to a facility with a 24×7 cath lab even when a general hospital is closer — the same specialty-centre bypass real EMS protocols use. Capability profiles are curated for 30 Bengaluru hospitals; oncology, maternity and day-surgery units are excluded from emergency routing entirely.',
-  },
-  {
-    title: 'Its own road graph, no provider needed',
-    body: 'Routing and the agent run on a 112,725-node OpenStreetMap graph of Bengaluru with an A* router that knows about the closures and conditions dispatch sets. Delays come from a modelled city (road class, time of day, weather, closures), labelled as modelled; a Google Routes key, if configured, is optional.',
-  },
-  {
-    title: 'It separates what it knows from what it models',
-    body: 'Hospital capability is curated and drives routing. There is no hospital data feed, so bed counts are simulated, drawn differently wherever they appear, and never used to rank hospitals. Only a figure an ER desk enters changes the ranking.',
-  },
-];
-
-const SAMPLE = {
-  emergency: 'Cardiac',
-  location: 'Hebbal, Bengaluru',
-  chosen: { name: 'Aster CMI Hospital (Hebbal)', factor: 'Cath lab', value: '0.82', eta: '5.9' },
-  runnerUp: { name: 'MS Ramaiah Memorial Hospital', factor: 'Cath lab', value: '0.76', eta: '6.4' },
-};
 
 export default function LandingPage() {
-  const [plan, setPlan] = useState(SAMPLE);
-  const [isSample, setIsSample] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/incidents/');
-        if (!res.ok) return;
-        const { incidents = [] } = await res.json();
-        const withPlan = incidents
-          .filter((i) => i.action_plan?.all_hospitals?.length > 1)
-          .pop();
-        if (!withPlan || cancelled) return;
-
-        const candidates = withPlan.action_plan.all_hospitals;
-        const recommendation = withPlan.action_plan.recommended_hospital;
-        const a = candidates.find((h) => h.hospital_id === recommendation?.hospital_id);
-        const b = candidates.find((h) => h.hospital_id !== a?.hospital_id);
-        if (!a || !b) return;
-        const fa = a.score_breakdown ?? [];
-        const fb = b.score_breakdown ?? [];
-        const key = fa.reduce(
-          (best, f) => {
-            const other = fb.find((x) => x.factor === f.factor);
-            const gap = other ? f.weighted_score - other.weighted_score : 0;
-            return gap > best.gap ? { gap, factor: f.factor, a: f.raw_score, b: other?.raw_score } : best;
-          },
-          { gap: -Infinity, factor: null },
-        );
-        if (!key.factor) return;
-
-        setIsSample(false);
-        setPlan({
-          emergency: (withPlan.emergency_type ?? 'Emergency').replace(/^\w/, (c) => c.toUpperCase()),
-          location: 'Bengaluru',
-          chosen: {
-            name: a.name,
-            factor: key.factor,
-            value: key.a?.toFixed(2),
-            eta: a.road_eta_seconds ? (a.road_eta_seconds / 60).toFixed(1) : null,
-          },
-          runnerUp: {
-            name: b.name,
-            factor: key.factor,
-            value: key.b?.toFixed(2),
-            eta: b.road_eta_seconds ? (b.road_eta_seconds / 60).toFixed(1) : null,
-          },
-        });
-      } catch { /* keep the sample */ }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  const further =
-    plan.chosen.eta && plan.runnerUp.eta
-      ? (Number(plan.chosen.eta) - Number(plan.runnerUp.eta)).toFixed(1)
-      : null;
-
   return (
-    <div className="min-h-screen bg-field">
-      <header className="border-b border-ink bg-ink">
-        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-5 py-3.5 sm:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-[22px] w-[22px] place-items-center rounded-sm bg-signal font-mono text-[11px] font-bold text-ink">
+    <div className="min-h-screen bg-[#faf9f6] text-[#1a1c1a] font-['Inter',sans-serif]">
+      {/* HEADER */}
+      <header className="fixed top-0 w-full z-50 bg-[#131a33] shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+        <div className="h-16 max-w-7xl mx-auto px-6 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-9 h-9 rounded-lg bg-[#f59e0b] flex items-center justify-center font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
               R
             </div>
-            <span className="font-display text-[14px] font-bold tracking-[0.1em] text-on-ink uppercase">
-              RapidGrid
-            </span>
-            <span className="hidden h-5 w-px bg-rule-ink sm:block" />
-            <span className="hidden t-meta uppercase tracking-[0.12em] text-on-ink-muted sm:inline">
-              Bengaluru emergency vehicle dispatch
-            </span>
+            <div className="flex flex-col">
+              <span className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-white tracking-tight">
+                RapidGrid
+              </span>
+              <span className="text-[12px] text-[#bec5e5]">
+                Bengaluru emergency vehicle dispatch
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <nav className="hidden md:flex items-center gap-6">
+            <Link
+              to="/dispatcher"
+              className="px-2 py-1 text-[14px] transition-colors bg-[#f59e0b] text-[#613b00] font-bold rounded-lg"
+            >
+              Dispatch
+            </Link>
+            <Link
+              to="/seats"
+              className="px-2 py-1 text-[14px] font-bold text-[#bec5e5] hover:text-white transition-colors"
+            >
+              Fleet &amp; Seats
+            </Link>
+            <Link
+              to="/control"
+              className="px-2 py-1 text-[14px] font-bold text-[#bec5e5] hover:text-white transition-colors"
+            >
+              Control Room
+            </Link>
+          </nav>
+
+          <div className="flex items-center gap-4">
             <Link
               to="/login"
-              className="tap inline-flex items-center gap-1.5 rounded-sm border border-rule-ink px-3 py-2 t-tag text-on-ink transition-colors hover:border-signal hover:text-signal"
+              className="px-4 py-2 rounded-lg bg-[#f59e0b] text-[#131a33] font-bold text-[14px] hover:bg-[#ffb95f] hover:text-[#2a1700] transition-colors"
             >
               Sign in
+            </Link>
+            <Link
+              to="/login"
+              className="w-8 h-8 rounded-full bg-[#855300] flex items-center justify-center hover:opacity-90"
+            >
+              <span className="material-symbols-outlined text-white text-[18px]">person</span>
             </Link>
           </div>
         </div>
       </header>
 
-      <main>
-        <section className="mx-auto max-w-[1440px] px-5 py-12 sm:px-8 sm:py-16 lg:py-20">
-          <div className="grid gap-10 lg:grid-cols-[1fr_minmax(320px,400px)] lg:gap-16 lg:items-start">
-            <div>
-              <p className="eyebrow">Emergency vehicle movement</p>
-              <h1 className="mt-5 font-display text-[clamp(36px,8vw,82px)] font-semibold leading-[0.96] tracking-[-0.028em] text-text">
-                It watches the route, so dispatch does not have to guess.
-              </h1>
-              <p className="mt-6 max-w-[62ch] text-[17px] leading-relaxed text-text-muted sm:text-[19px]">
-                RapidGrid's monitoring agent follows every unit on a call. When one leaves its route,
-                meets a closed road or slows down, it says why, how late, which way round, and whether
-                to keep that unit or send a closer one, in plain words. It also sends each patient to a
-                hospital that can treat them, not just the nearest.
+      {/* MAIN BODY */}
+      <main className="w-full pt-16 bg-[#faf9f6]">
+        <div className="flex flex-col w-full">
+          {/* 1. HERO SECTION */}
+          <section className="w-full bg-[#faf9f6] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-[#f59e0b]/10 rounded-full blur-3xl -mt-16 -mr-16 pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-80 h-80 bg-[#d8deff]/40 rounded-full blur-3xl -ml-16 pointer-events-none"></div>
+            <div className="max-w-7xl mx-auto px-6 py-8 relative z-10">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* Left Column */}
+                <div className="lg:col-span-6 flex flex-col gap-6 min-w-0">
+                  <div className="inline-flex items-center gap-2 self-start px-4 py-1 rounded-lg bg-[#ffdad7] text-[#930013] shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-[#b91a24] animate-pulse"></span>
+                    <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider">
+                      EMERGENCY VEHICLE MOVEMENT
+                    </span>
+                  </div>
+
+                  <h1 className="font-['Space_Grotesk',sans-serif] text-[clamp(28px,4.5vw,40px)] font-bold text-[#131a33] leading-tight tracking-tight">
+                    It watches the route, so dispatch does not have to guess.
+                  </h1>
+
+                  <p className="text-[16px] leading-relaxed text-[#534434]">
+                    RapidGrid's monitoring agent follows every unit on a call. When one leaves its
+                    route, meets a closed road or slows down, it says why, how late, which way round,
+                    and whether to keep that unit or send a closer one, in plain words. It also sends
+                    each patient to a hospital that can treat them, not just the nearest.
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-4 pt-1">
+                    <Link
+                      to="/citizen"
+                      className="inline-flex items-center gap-2 px-6 py-4 rounded-lg bg-[#f59e0b] text-[#131a33] font-['Archivo_Narrow',sans-serif] font-bold text-[14px] shadow-md hover:bg-[#ffb95f] hover:shadow-lg transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        emergency
+                      </span>
+                      <span>Report an emergency</span>
+                    </Link>
+                    <Link
+                      to="/dispatcher"
+                      className="inline-flex items-center gap-2 px-6 py-4 rounded-lg bg-[#131a33] text-white font-['Archivo_Narrow',sans-serif] font-bold text-[14px] shadow-md hover:bg-[#3e4660] transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">monitoring</span>
+                      <span>Open the dispatch console</span>
+                    </Link>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-4 pt-1 text-[12px] text-[#5a627e]">
+                    <Link
+                      to="/seats"
+                      className="inline-flex items-center gap-1 hover:text-[#855300] transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-[#f59e0b]">groups</span>
+                      <span>Choose your seat (team demo)</span>
+                    </Link>
+                    <span className="text-[#d8c3ad]">/</span>
+                    <Link
+                      to="/control"
+                      className="inline-flex items-center gap-1 hover:text-[#855300] transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-[#565d79]">apartment</span>
+                      <span>City control room</span>
+                    </Link>
+                    <span className="text-[#d8c3ad]">/</span>
+                    <Link
+                      to="/demo"
+                      className="inline-flex items-center gap-1 hover:text-[#855300] transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[16px] text-[#b91a24]">play_circle</span>
+                      <span>Guided demo</span>
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Right Column */}
+                <div className="lg:col-span-6 flex flex-col gap-4 min-w-0">
+                  <div className="relative rounded-xl overflow-hidden shadow-xl bg-[#131a33]">
+                    <img
+                      className="w-full h-80 object-cover"
+                      alt="Bengaluru live grid active corridor"
+                      src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSY3yHPtA3oCxCUHmdxSa6B54fQbi7i7zoH9qVcAdpqkVmZ7-W4fAjFFB5T0PyMpkChCn3IBc5o0mJWMYfuizt1Ih3KlWVFraR8ygwzub8MX7dSj5XcOvbX9F3MuDSmEd20spbmUwj9764r2SEfyd4liCrGgkKPcMoUHTlBQYafIzRqnfE1Aha6qd1BE50CjrMGhs0xULElrYwa34NgezRUE5KfAJAA95bROiVIkA"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#131a33]/80 via-transparent to-transparent pointer-events-none"></div>
+                    <div className="absolute top-4 left-4 inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#131a33]/90 backdrop-blur-xs text-white shadow-md">
+                      <span className="w-2 h-2 rounded-full bg-[#f59e0b] animate-pulse"></span>
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider">
+                        BENGALURU LIVE GRID · UNIT KA-01-G-4821
+                      </span>
+                    </div>
+                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between gap-2 text-white">
+                      <div className="flex flex-col">
+                        <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold text-[#ffb95f] uppercase tracking-wider">
+                          ACTIVE CORRIDOR
+                        </span>
+                        <span className="font-['Inter',sans-serif] text-[16px] font-semibold">
+                          Hebbal Flyover → Aster CMI
+                        </span>
+                      </div>
+                      <div className="px-3 py-1.5 rounded-lg bg-[#f59e0b] text-[#131a33] font-['JetBrains_Mono',monospace] text-[14px] font-bold">
+                        ETA 5.9 MIN
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* What it runs on 4-metric card */}
+                  <div className="bg-white rounded-xl p-6 shadow-md border border-[#efeeeb]">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#534434]">
+                        What it runs on
+                      </span>
+                      <span className="font-['JetBrains_Mono',monospace] text-[14px] font-medium text-[#855300]">
+                        BLR-GRAPH v2.4
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-[#f4f3f1] rounded-lg p-4 flex flex-col gap-1">
+                        <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#131a33]">
+                          112,725
+                        </span>
+                        <span className="text-[12px] text-[#534434]">
+                          OSM nodes · 178,089 edges / Bengaluru road graph
+                        </span>
+                      </div>
+                      <div className="bg-[#ffddb8]/40 rounded-lg p-4 flex flex-col gap-1">
+                        <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#2a1700]">
+                          30
+                        </span>
+                        <span className="text-[12px] text-[#653e00]">
+                          Facilities · curated capability profiles, coords via OSM
+                        </span>
+                      </div>
+                      <div className="bg-[#dbe1ff]/50 rounded-lg p-4 flex flex-col gap-1">
+                        <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#131a33]">
+                          6
+                        </span>
+                        <span className="text-[12px] text-[#3e4660]">
+                          Agent steps per alert · observe, detect, explain, predict, options, advise
+                        </span>
+                      </div>
+                      <div className="bg-[#ffdad7]/40 rounded-lg p-4 flex flex-col gap-1">
+                        <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#410004]">
+                          &lt; 2 s
+                        </span>
+                        <span className="text-[12px] text-[#930013]">
+                          Per alert · routes, cause and backup worked out (measured offline)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 2. HOSPITAL COMPARISON SECTION */}
+          <section className="w-full bg-[#f4f3f1] py-8">
+            <div className="max-w-7xl mx-auto px-6 flex flex-col gap-6">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+                <div className="flex flex-col gap-1">
+                  <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#b91a24]">
+                    CAPABILITY-FIRST ROUTING
+                  </span>
+                  <h2 className="font-['Space_Grotesk',sans-serif] text-[clamp(24px,3.5vw,32px)] font-bold text-[#131a33]">
+                    Illustrative comparison · Cardiac · Hebbal, Bengaluru
+                  </h2>
+                </div>
+                <span className="font-['JetBrains_Mono',monospace] text-[14px] text-[#5a627e] bg-white px-4 py-1.5 rounded-lg shadow-xs">
+                  CASE: STEMI-04
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Left: Vibrant Signal Amber Card */}
+                <div className="bg-[#f59e0b] rounded-xl p-6 shadow-md text-[#131a33] flex flex-col justify-between gap-6">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#131a33] text-white font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider">
+                        <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                          check_circle
+                        </span>
+                        Selected
+                      </span>
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#613b00]">
+                        PRIMARY MATCH
+                      </span>
+                    </div>
+                    <h3 className="font-['Space_Grotesk',sans-serif] text-[24px] font-semibold text-[#131a33] pt-1">
+                      Aster CMI Hospital (Hebbal)
+                    </h3>
+                    <p className="text-[14px] text-[#2a1700]">Compared factor · Cath lab</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 bg-white/90 rounded-lg p-4">
+                    <div className="flex flex-col">
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase text-[#534434]">
+                        Score
+                      </span>
+                      <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#131a33]">
+                        0.82
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase text-[#534434]">
+                        Road ETA
+                      </span>
+                      <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#131a33]">
+                        5.9 min
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Cool Slate/Ice Card */}
+                <div className="bg-[#dbe1ff] rounded-xl p-6 shadow-xs text-[#131a33] flex flex-col justify-between gap-6">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white text-[#3e4660] font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider">
+                        Faster alternative
+                      </span>
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#5a627e]">
+                        CANDIDATE #2
+                      </span>
+                    </div>
+                    <h3 className="font-['Space_Grotesk',sans-serif] text-[24px] font-semibold text-[#131a33] pt-1">
+                      MS Ramaiah Memorial Hospital
+                    </h3>
+                    <p className="text-[14px] text-[#3e4660]">
+                      Alternative candidate · compare capability and travel time
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 bg-white/90 rounded-lg p-4">
+                    <div className="flex flex-col">
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase text-[#534434]">
+                        Score
+                      </span>
+                      <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#3e4660]">
+                        0.76
+                      </span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase text-[#534434]">
+                        Road ETA
+                      </span>
+                      <span className="font-['JetBrains_Mono',monospace] text-[24px] font-bold text-[#3e4660]">
+                        6.4 min
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[12px] text-[#534434] bg-white px-4 py-2.5 rounded-lg shadow-xs border border-[#efeeeb]">
+                This recommendation adds 0.5 minutes of estimated travel. The compared capability score
+                is one part of the ranking; this is not a record of an ambulance journey.
               </p>
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            </div>
+          </section>
+
+          {/* 3. CAPABILITIES GRID */}
+          <section className="w-full bg-[#faf9f6] py-8">
+            <div className="max-w-7xl mx-auto px-6 flex flex-col gap-6">
+              <div className="flex flex-col gap-1">
+                <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#855300]">
+                  SYSTEM ARCHITECTURE
+                </span>
+                <h2 className="font-['Space_Grotesk',sans-serif] text-[clamp(24px,3.5vw,32px)] font-bold text-[#131a33]">
+                  Built for high-stakes dispatch
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white rounded-xl p-6 shadow-xs hover:shadow-md transition-shadow border border-[#efeeeb] flex flex-col gap-4">
+                  <div className="w-11 h-11 rounded-lg bg-[#f59e0b] text-[#131a33] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      visibility
+                    </span>
+                  </div>
+                  <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                    An agent watches every unit on its route
+                  </h3>
+                  <p className="text-[14px] leading-relaxed text-[#534434]">
+                    RapidGrid's monitoring agent tracks each active ambulance against its planned path.
+                    When a unit slows, detours, or hits a blockage, it explains the cause, estimates
+                    the delay, and recommends whether to hold or reassign.
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-xl p-6 shadow-xs hover:shadow-md transition-shadow border border-[#efeeeb] flex flex-col gap-4">
+                  <div className="w-11 h-11 rounded-lg bg-[#ffdad7] text-[#930013] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      local_hospital
+                    </span>
+                  </div>
+                  <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                    It routes on capability, not just proximity
+                  </h3>
+                  <p className="text-[14px] leading-relaxed text-[#534434]">
+                    Sending a cardiac or trauma patient to the closest clinic wastes critical minutes.
+                    RapidGrid scores 30 Bengaluru facilities on clinical capability, bed readiness, and
+                    road ETA so each patient reaches a hospital that can treat them.
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-xl p-6 shadow-xs hover:shadow-md transition-shadow border border-[#efeeeb] flex flex-col gap-4">
+                  <div className="w-11 h-11 rounded-lg bg-[#dbe1ff] text-[#131a33] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      hub
+                    </span>
+                  </div>
+                  <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                    Its own road graph, no provider needed
+                  </h3>
+                  <p className="text-[14px] leading-relaxed text-[#534434]">
+                    Built directly on OpenStreetMap's Bengaluru street network (112,725 nodes and
+                    178,089 edges), RapidGrid computes turn-by-turn routes, alternate corridors, and
+                    backup unit ETAs locally in under two seconds.
+                  </p>
+                </div>
+
+                <div className="bg-white rounded-xl p-6 shadow-xs hover:shadow-md transition-shadow border border-[#efeeeb] flex flex-col gap-4">
+                  <div className="w-11 h-11 rounded-lg bg-[#131a33] text-[#f59e0b] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      fact_check
+                    </span>
+                  </div>
+                  <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                    It separates what it knows from what it models
+                  </h3>
+                  <p className="text-[14px] leading-relaxed text-[#534434]">
+                    Real OpenStreetMap road geometry and curated hospital profiles are kept strictly
+                    distinct from simulated traffic delays and modelled unit telemetry, giving
+                    operators full clarity on what is live data versus demonstration state.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* 4. ONE INCIDENT, FOUR PORTALS */}
+          <section className="w-full bg-[#f4f3f1] py-8">
+            <div className="max-w-7xl mx-auto px-6 flex flex-col gap-6">
+              <div className="flex flex-col gap-1">
+                <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#565d79]">
+                  MULTI-ROLE WORKFLOW
+                </span>
+                <h2 className="font-['Space_Grotesk',sans-serif] text-[clamp(24px,3.5vw,32px)] font-bold text-[#131a33]">
+                  One incident, four portals
+                </h2>
+                <p className="text-[16px] text-[#534434]">
+                  Open them in separate tabs and watch a single call move between them in real time.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Link
                   to="/citizen"
-                  className="tap inline-flex items-center justify-center rounded-sm border border-ink bg-signal px-6 py-4 t-tag text-ink transition-colors hover:bg-ink hover:text-signal"
+                  className="group bg-white rounded-xl p-6 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between gap-6 border border-[#efeeeb]"
                 >
-                  Report an emergency
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <span className="w-10 h-10 rounded-lg bg-[#b91a24] text-white font-['Archivo_Narrow',sans-serif] text-[20px] font-bold flex items-center justify-center">
+                        C
+                      </span>
+                      <span className="material-symbols-outlined text-[#534434] group-hover:translate-x-1 transition-transform">
+                        arrow_forward
+                      </span>
+                    </div>
+                    <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                      Citizen
+                    </h3>
+                    <p className="text-[14px] text-[#534434]">
+                      Report an emergency, track the response.
+                    </p>
+                  </div>
+                  <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#b91a24]">
+                    OPEN PORTAL
+                  </span>
                 </Link>
+
                 <Link
                   to="/dispatcher"
-                  className="tap inline-flex items-center justify-center rounded-sm border border-ink bg-transparent px-6 py-4 t-tag text-text transition-colors hover:bg-ink hover:text-on-ink"
+                  className="group bg-white rounded-xl p-6 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between gap-6 border border-[#efeeeb]"
                 >
-                  Open the dispatch console
-                </Link>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 t-tag">
-                <Link to="/seats" className="underline underline-offset-4 hover:text-signal-hover">Choose your seat (team demo)</Link>
-                <Link to="/control" className="underline underline-offset-4 hover:text-signal-hover">City control room</Link>
-                <Link to="/demo" className="underline underline-offset-4 hover:text-signal-hover">Guided demo</Link>
-              </div>
-            </div>
-
-            <div className="rounded-md border border-rule bg-paper">
-              <div className="border-b border-rule px-4 py-3">
-                <span className="eyebrow">What it runs on</span>
-              </div>
-              <div className="flex flex-col gap-4 p-4">
-                {[
-                  { n: '112,725', l: 'OSM nodes · 178,089 edges\nBengaluru road graph', modelled: false },
-                  { n: '30', l: 'Facilities · curated capability\nprofiles, coords via OSM', modelled: false },
-                  { n: '6', l: 'Agent steps per alert · observe, detect,\nexplain, predict, options, advise', modelled: false },
-                  { n: '< 2 s', l: 'Per alert · routes, cause and backup\nworked out (measured offline)', modelled: true },
-                ].map((row) => (
-                  <div key={row.n}>
-                    <div className={`inline-block font-mono text-[26px] ${row.modelled ? 'val-modelled' : 'val-verified'}`}>
-                      {row.n}
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <span className="w-10 h-10 rounded-lg bg-[#f59e0b] text-[#131a33] font-['Archivo_Narrow',sans-serif] text-[20px] font-bold flex items-center justify-center">
+                        D
+                      </span>
+                      <span className="material-symbols-outlined text-[#534434] group-hover:translate-x-1 transition-transform">
+                        arrow_forward
+                      </span>
                     </div>
-                    <div className="mt-1.5 whitespace-pre-line t-meta uppercase tracking-[0.1em] text-text-faint">
-                      {row.l}
-                    </div>
+                    <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                      City dispatch
+                    </h3>
+                    <p className="text-[14px] text-[#534434]">
+                      Review, override, dispatch.
+                    </p>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="border-y border-ink bg-paper">
-          <div className="mx-auto max-w-[1440px] px-5 sm:px-8">
-            <div className="flex flex-wrap items-center gap-3 border-b border-rule py-4">
-              <span className="eyebrow text-text">{isSample ? 'Illustrative comparison' : 'Latest demo recommendation'}</span>
-              <span className="hidden h-4 w-px bg-rule sm:block" />
-              <span className="t-meta uppercase tracking-[0.12em] text-text-faint">
-                {plan.emergency} · {plan.location}
-              </span>
-              <span className="ml-auto">
-                <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink px-2 py-1 t-tag">
-                  <span className="inline-block h-1.5 w-1.5 bg-ink" />
-                  {isSample ? 'Sample scores and ETAs' : 'Estimated road travel times'}
-                </span>
-              </span>
-            </div>
-            <div className="grid md:grid-cols-2">
-              <div className="bg-signal p-8 md:p-9">
-                <span className="inline-flex bg-ink px-2 py-1.5 t-tag text-signal">Selected</span>
-                <div className="mt-3 font-display text-[28px] font-semibold leading-tight tracking-tight text-ink sm:text-[36px]">
-                  {plan.chosen.name}
-                </div>
-                <div className="mt-3 t-meta uppercase tracking-[0.1em] text-ink/80">
-                  Compared factor · {plan.chosen.factor}
-                </div>
-                <div className="mt-6 flex gap-10">
-                  <div>
-                    <div className="eyebrow mb-2 text-ink/70">Score</div>
-                    <span className="val-verified text-[40px] text-ink">{plan.chosen.value}</span>
-                  </div>
-                  <div>
-                    <div className="eyebrow mb-2 text-ink/70">Road ETA</div>
-                    <span className="val-verified text-[40px] text-ink">{plan.chosen.eta ?? '—'}</span>
-                    <span className="ml-1 font-mono text-[13px]">min</span>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-paper-sunk p-8 md:p-9">
-                <span className="inline-flex border border-rule px-2 py-1.5 t-tag text-text-faint">
-                  {further && Number(further) > 0 ? 'Faster alternative' : 'Alternative facility'}
-                </span>
-                <div className="mt-3 font-display text-[28px] font-semibold leading-tight tracking-tight text-text-muted sm:text-[36px]">
-                  {plan.runnerUp.name}
-                </div>
-                <div className="mt-3 t-meta uppercase tracking-[0.1em] text-text-faint">
-                  Alternative candidate · compare capability and travel time
-                </div>
-                <div className="mt-6 flex gap-10">
-                  <div>
-                    <div className="eyebrow mb-2">Score</div>
-                    <span className="val-verified text-[40px] text-text-muted">{plan.runnerUp.value}</span>
-                  </div>
-                  <div>
-                    <div className="eyebrow mb-2">Road ETA</div>
-                    <span className="val-verified text-[40px] text-text-muted">{plan.runnerUp.eta ?? '—'}</span>
-                    <span className="ml-1 font-mono text-[13px] text-text-muted">min</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <p className="border-t border-rule px-5 py-5 text-[16px] leading-relaxed text-text-muted sm:px-8 sm:text-[22px]">
-              {further && Number(further) > 0 ? (
-                <>
-                  This recommendation adds{' '}
-                  <span className="val-verified text-text">{further}</span> minutes of estimated travel. The compared capability score is one part of the ranking; this is not a record of an ambulance journey.
-                </>
-              ) : (
-                <>
-                  The system states which hospital it rejected, on which factor, and what the choice
-                  cost in road minutes.
-                </>
-              )}
-            </p>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-[1440px] px-5 py-14 sm:px-8">
-          <div className="grid gap-8 md:grid-cols-3 md:gap-10">
-            {CAPABILITIES.map((c) => (
-              <article key={c.title}>
-                <h2 className="font-display text-[18px] font-semibold leading-snug text-text">
-                  {c.title}
-                </h2>
-                <p className="mt-3 text-[13px] leading-relaxed text-text-muted">{c.body}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="border-t border-rule bg-paper">
-          <div className="mx-auto max-w-[1440px] px-5 py-14 sm:px-8">
-            <h2 className="font-display text-[clamp(22px,4vw,28px)] font-semibold tracking-tight text-text">
-              One incident, four portals
-            </h2>
-            <p className="mt-2 max-w-[56ch] text-[14px] leading-relaxed text-text-muted">
-              Open them in separate tabs and watch a single call move between them in real time.
-            </p>
-            <div className="mt-6 grid gap-2 sm:grid-cols-2 lg:gap-3">
-              {[
-                { to: '/citizen', name: 'Citizen', desc: 'Report an emergency, track the response.', g: 'C' },
-                { to: '/dispatcher', name: 'City dispatch', desc: 'Review, override, dispatch.', g: 'D' },
-                { to: '/driver', name: 'Field unit', desc: 'Two-stage navigation and handover.', g: 'F' },
-                { to: '/hospital', name: 'Emergency department', desc: 'Inbound patients and capacity.', g: 'E' },
-              ].map((p) => (
-                <Link
-                  key={p.to}
-                  to={p.to}
-                  className="group flex items-center justify-between gap-3 rounded-md border border-rule bg-paper px-4 py-3.5 transition-colors hover:border-ink"
-                >
-                  <span className="flex items-center gap-3">
-                    <span className="grid h-8 w-8 place-items-center rounded-sm bg-ink font-mono text-[11px] font-bold text-signal">
-                      {p.g}
-                    </span>
-                    <span>
-                      <span className="block text-[14px] font-semibold text-text">{p.name}</span>
-                      <span className="mt-0.5 block text-[12px] text-text-muted">{p.desc}</span>
-                    </span>
+                  <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#855300]">
+                    OPEN PORTAL
                   </span>
-                  <ArrowRight
-                    size={16}
-                    className="shrink-0 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-signal"
-                  />
                 </Link>
-              ))}
-            </div>
-          </div>
-        </section>
 
-        <section className="border-t border-rule">
-          <div className="mx-auto max-w-[1440px] px-5 py-14 sm:px-8">
-            <h2 className="font-display text-[clamp(18px,4vw,22px)] font-semibold tracking-tight text-text">
-              What is real, and what is not
-            </h2>
-            <div className="mt-6 grid gap-8 md:grid-cols-2">
-              <div>
-                <div className="eyebrow mb-3 text-text">Data sources and routing</div>
-                <ul className="space-y-2">
-                  {[
-                    'Bengaluru road network — 112,725 nodes from OpenStreetMap',
-                    'Google traffic routing when configured and available; offline A* fallback otherwise',
-                    'Weather input when an OpenWeather key is set; estimated travel times',
-                    'Hospital capability profiles, curated for 30 facilities',
-                    'A* pathfinding, closures and congestion included',
-                  ].map((t) => (
-                    <li key={t} className="flex items-start gap-2 text-[13px] leading-relaxed text-text-muted">
-                      <Check size={14} className="mt-[3px] shrink-0 text-text" />
-                      {t}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <div className="eyebrow mb-3 text-text-faint">Modelled</div>
-                <ul className="space-y-2">
-                  {[
-                    'Live ICU beds and blood units — no hospital feed is integrated',
-                    'Ambulance fleet positions — hubs are fixed, not GPS-tracked',
-                    'Triage classification — transparent keyword scoring, not a trained model',
-                    'Traffic conditions — modelled from hour, weather and drawn closures; no live traffic feed',
-                    'Bed counts — simulated unless an ER desk enters them; simulated figures never rank hospitals',
-                    'Clinical outcome bars — illustrative timing assumptions, not measured outcomes',
-                    'Signal preemption and congestion displacement — simulated',
-                  ].map((t) => (
-                    <li key={t} className="flex items-start gap-2 text-[13px] leading-relaxed text-text-muted">
-                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 border border-dashed border-text-faint" />
-                      {t}
-                    </li>
-                  ))}
-                </ul>
+                <Link
+                  to="/driver"
+                  className="group bg-white rounded-xl p-6 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between gap-6 border border-[#efeeeb]"
+                >
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <span className="w-10 h-10 rounded-lg bg-[#131a33] text-white font-['Archivo_Narrow',sans-serif] text-[20px] font-bold flex items-center justify-center">
+                        F
+                      </span>
+                      <span className="material-symbols-outlined text-[#534434] group-hover:translate-x-1 transition-transform">
+                        arrow_forward
+                      </span>
+                    </div>
+                    <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                      Field unit
+                    </h3>
+                    <p className="text-[14px] text-[#534434]">
+                      Two-stage navigation and handover.
+                    </p>
+                  </div>
+                  <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#131a33]">
+                    OPEN PORTAL
+                  </span>
+                </Link>
+
+                <Link
+                  to="/hospital"
+                  className="group bg-white rounded-xl p-6 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between gap-6 border border-[#efeeeb]"
+                >
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <span className="w-10 h-10 rounded-lg bg-[#565d79] text-white font-['Archivo_Narrow',sans-serif] text-[20px] font-bold flex items-center justify-center">
+                        E
+                      </span>
+                      <span className="material-symbols-outlined text-[#534434] group-hover:translate-x-1 transition-transform">
+                        arrow_forward
+                      </span>
+                    </div>
+                    <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                      Emergency department
+                    </h3>
+                    <p className="text-[14px] text-[#534434]">
+                      Inbound patients and capacity.
+                    </p>
+                  </div>
+                  <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#565d79]">
+                    OPEN PORTAL
+                  </span>
+                </Link>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+
+          {/* 5. WHAT IS REAL, AND WHAT IS NOT */}
+          <section className="w-full bg-[#faf9f6] py-8">
+            <div className="max-w-7xl mx-auto px-6 flex flex-col gap-6">
+              <div className="flex flex-col gap-1">
+                <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#534434]">
+                  TRANSPARENCY &amp; SCOPE
+                </span>
+                <h2 className="font-['Space_Grotesk',sans-serif] text-[clamp(24px,3.5vw,32px)] font-bold text-[#131a33]">
+                  What is real, and what is not
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Data sources and routing */}
+                <div className="bg-white rounded-xl p-6 shadow-xs border border-[#efeeeb] flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#565d79] text-[22px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      verified
+                    </span>
+                    <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                      Data sources and routing
+                    </h3>
+                  </div>
+                  <ul className="flex flex-col gap-4 text-[14px] text-[#534434]">
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[#565d79] text-[20px] shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        check_circle
+                      </span>
+                      <span>
+                        Bengaluru road network extracted from OpenStreetMap (112,725 nodes, 178,089 directed edges).
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[#565d79] text-[20px] shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        check_circle
+                      </span>
+                      <span>
+                        30 Bengaluru hospitals with coordinates verified via OpenStreetMap and curated capability profiles.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[#565d79] text-[20px] shrink-0" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        check_circle
+                      </span>
+                      <span>
+                        Deterministic shortest-path routing and 6-step monitoring agent running locally in under 2 seconds per alert.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Modelled */}
+                <div className="bg-[#ffddb8]/30 rounded-xl p-6 shadow-xs border border-[#efeeeb] flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#855300] text-[22px]">
+                      science
+                    </span>
+                    <h3 className="font-['Archivo_Narrow',sans-serif] text-[20px] font-bold text-[#131a33]">
+                      Modelled
+                    </h3>
+                  </div>
+                  <ul className="flex flex-col gap-4 text-[14px] text-[#653e00]">
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[#855300] text-[20px] shrink-0">
+                        radio_button_checked
+                      </span>
+                      <span>
+                        Simulated ambulance GPS telemetry, speed drops, road closures, and detour events for demonstration.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[#855300] text-[20px] shrink-0">
+                        radio_button_checked
+                      </span>
+                      <span>
+                        Synthetic emergency call intake, dispatch overrides, and hospital bed availability counts.
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="material-symbols-outlined text-[#855300] text-[20px] shrink-0">
+                        radio_button_checked
+                      </span>
+                      <span>
+                        Illustrative capability scores and estimated travel times; not a record of live clinical or ambulance operations.
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
       </main>
 
-      <footer className="border-t border-ink bg-ink">
-        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-5 py-5 sm:px-8">
-          <span className="t-meta uppercase tracking-[0.12em] text-on-ink-muted">
-            RapidGrid · Bengaluru emergency vehicle dispatch
-          </span>
-          <span className="t-meta text-on-ink-muted">
-            Road data © OpenStreetMap contributors
-          </span>
+      {/* FOOTER */}
+      <footer className="w-full bg-[#f4f3f1] py-6 border-t border-[#efeeeb]">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-[12px] text-[#534434]">
+          <span>RapidGrid · Bengaluru emergency vehicle dispatch</span>
+          <span>Road data © OpenStreetMap contributors</span>
         </div>
       </footer>
     </div>
