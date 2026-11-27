@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import shortId from '../utils/shortId';
-import { Check, BedDouble } from 'lucide-react';
+import { Check, BedDouble, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import LiveEmergencyChat from '../components/LiveEmergencyChat';
 import {
@@ -49,6 +49,7 @@ export default function HospitalDashboard() {
   const [bedsTotal, setBedsTotal] = useState(null);
   const bedsEditing = React.useRef(false);
   const [openThread, setOpenThread] = useState(null);
+  const [showAllModal, setShowAllModal] = useState(false);
   const [conn, setConn] = useState('ok');
 
   useEffect(() => {
@@ -157,6 +158,16 @@ export default function HospitalDashboard() {
               tone="signal"
               modelled
             />
+            {incoming.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAllModal(true)}
+                className="tap inline-flex items-center gap-1.5 rounded-sm border border-rule-ink bg-ink-raised px-3 py-2 text-[12.5px] font-semibold text-on-ink transition-colors hover:border-signal hover:text-signal"
+              >
+                <Users size={14} className="text-signal" />
+                View all incoming ({incoming.length})
+              </button>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -340,6 +351,146 @@ export default function HospitalDashboard() {
           HMIS or HL7 feed would replace them with live counts.
         </p>
       </Panel>
+
+      {/* Modal dialog showing all incoming patients with details and arrival times */}
+      {showAllModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          onClick={() => setShowAllModal(false)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-[840px] flex-col overflow-hidden rounded-md border border-rule bg-paper shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-rule bg-paper-sunk px-5 py-3.5">
+              <div>
+                <h2 className="text-[15px] font-semibold text-text">
+                  All Incoming Patients · {hospitalInfo?.name ?? 'Emergency Department'}
+                </h2>
+                <p className="text-[12px] text-text-muted">
+                  {incoming.length} patient{incoming.length === 1 ? '' : 's'} en route, sorted by severity and arrival time.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAllModal(false)}
+                className="tap rounded-sm p-1.5 text-text-muted transition-colors hover:bg-paper hover:text-text"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-rule">
+              {incoming.length === 0 ? (
+                <Empty
+                  title="No inbound patients"
+                  hint="Patients appear here as soon as dispatch approves a plan that names this hospital."
+                />
+              ) : (
+                incoming
+                  .slice()
+                  .sort((a, b) => (b.severity ?? 0) - (a.severity ?? 0))
+                  .map((c) => {
+                    const band = severityBand(c.severity ?? 0);
+                    const ack = acknowledged[c.incident_id];
+                    return (
+                      <article
+                        key={c.incident_id}
+                        className={`px-5 py-4 ${
+                          band.key === 'critical' ? 'bg-critical-wash/40' : ''
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-[12px] font-bold text-text" title={c.incident_id}>
+                                {shortId(c.incident_id)}
+                              </span>
+                              <SeverityTag severity={c.severity ?? 0} />
+                              <span className="t-meta uppercase tracking-[0.1em] text-text-faint">
+                                {c.emergency_type}
+                              </span>
+                            </div>
+
+                            <p className="mt-2 text-[13px] leading-relaxed text-text">
+                              {c.patient_summary}
+                            </p>
+
+                            <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-text-faint">
+                              <span>Assigned unit: <strong className="text-text">{c.assigned_driver || 'Pending'}</strong></span>
+                              <span>Status: <strong className="text-text">{c.status}</strong></span>
+                              {c.destination_on_divert && (
+                                <span className="text-critical font-medium">Destination currently on divert</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <div className="text-right">
+                              <div className="eyebrow text-text-muted">Arrives in</div>
+                              <div className="font-mono text-[26px] font-bold leading-none text-signal-hover">
+                                {c.eta_minutes ?? '--'}
+                                <span className="ml-1 text-[13px] font-medium opacity-60">min</span>
+                              </div>
+                            </div>
+                            {ack ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink px-2.5 py-1 t-tag text-text">
+                                <Check size={12} /> Acknowledged
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  setAcknowledged((p) => ({ ...p, [c.incident_id]: true }))
+                                }
+                              >
+                                Acknowledge
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between border-t border-rule/50 pt-2">
+                          <button
+                            onClick={() =>
+                              setOpenThread(openThread === c.incident_id ? null : c.incident_id)
+                            }
+                            className="tap inline-flex items-center text-[12px] text-text-muted underline underline-offset-[3px] hover:text-text"
+                          >
+                            {openThread === c.incident_id ? 'Hide channel' : 'Message the crew'}
+                          </button>
+                        </div>
+
+                        {openThread === c.incident_id && (
+                          <div className="rise mt-3">
+                            <LiveEmergencyChat
+                              incidentId={c.incident_id}
+                              senderRole="hospital"
+                              senderName={hospitalInfo?.name ?? 'ER desk'}
+                              height="180px"
+                            />
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-rule bg-paper-sunk px-5 py-3">
+              <span className="text-[12px] text-text-muted">
+                Times are live estimated travel times to {hospitalInfo?.name ?? 'this hospital'}.
+              </span>
+              <Button size="sm" onClick={() => setShowAllModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
