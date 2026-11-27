@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import shortId from '../utils/shortId';
 import { useAuth } from '../context/AuthContext';
-import { MapPin, Phone, Check, AlertTriangle, ChevronLeft } from 'lucide-react';
+import { MapPin, Phone, Check, AlertTriangle, ChevronLeft, History, X } from 'lucide-react';
 import MapOverlay from '../components/MapOverlay';
 import { useHospitals, useOsmHospitals } from '../hooks/useCityLayers';
 import useUnitTrack, { liveEtaMinutes } from '../hooks/useUnitTrack';
@@ -60,6 +60,10 @@ export default function CitizenDashboard() {
   const [error, setError] = useState(null);
   const [step, setStep] = useState(0);
 
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyList, setHistoryList] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
   const [pollUrl, setPollUrl] = useState(null);
   const [incident, setIncident] = useState(null);
   const [sending, setSending] = useState(false); // double-submit guard
@@ -70,6 +74,43 @@ export default function CitizenDashboard() {
   const speech = useSpeechToText({ lang: 'en-IN' });
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+
+  const loadHistory = async () => {
+    setShowHistory(true);
+    setLoadingHistory(true);
+    try {
+      let items = [];
+      const res = await fetch('/api/citizens/me/incidents');
+      if (res.ok) {
+        const data = await res.json();
+        items = data.incidents ?? [];
+      }
+      if (!items.length) {
+        let lastId = null;
+        try { lastId = sessionStorage.getItem('rapidgrid_my_incident'); } catch {}
+        if (lastId) {
+          const single = await fetch(`/api/incidents/${encodeURIComponent(lastId)}`);
+          if (single.ok) items = [await single.json()];
+        }
+      }
+      setHistoryList(items);
+    } catch {
+      /* offline */
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const resumeIncident = (item) => {
+    setIncident(item);
+    setPollUrl(`/api/incidents/${item.incident_id}`);
+    if (['dispatched', 'patient_picked_up'].includes(item.status)) {
+      setStage('tracking');
+    } else if (item.status === 'processing') {
+      setStage('sending');
+    }
+    setShowHistory(false);
+  };
 
   useEffect(() => {
     speech.setOnFinal((finalText) => {
@@ -235,6 +276,94 @@ export default function CitizenDashboard() {
     }
   };
 
+  const historyModal = showHistory && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+      onClick={() => setShowHistory(false)}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-[640px] flex-col overflow-hidden rounded-md border border-rule bg-paper shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-rule bg-paper-sunk px-5 py-3.5">
+          <div className="flex items-center gap-2">
+            <History size={16} className="text-signal-hover" />
+            <h2 className="text-[15px] font-semibold text-text">Your Emergency History</h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowHistory(false)}
+            className="tap rounded-sm p-1.5 text-text-muted hover:text-text"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto divide-y divide-rule p-2">
+          {loadingHistory ? (
+            <div className="p-8 text-center text-sm text-text-muted">Loading your past reports…</div>
+          ) : historyList.length === 0 ? (
+            <div className="p-8 text-center text-sm text-text-muted">
+              No emergency reports found for this session.
+            </div>
+          ) : (
+            historyList
+              .slice()
+              .reverse()
+              .map((item) => (
+                <div
+                  key={item.incident_id}
+                  className="flex flex-col gap-2 p-4 transition-colors hover:bg-paper-hover"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[12px] font-bold text-text">
+                        {shortId(item.incident_id)}
+                      </span>
+                      <span className="t-meta uppercase tracking-[0.1em] text-text-faint">
+                        {item.emergency_type || item.vehicle_required || 'Emergency'}
+                      </span>
+                    </div>
+                    <StatusTag status={item.status} />
+                  </div>
+
+                  <p className="text-[13px] text-text leading-relaxed">
+                    "{item.citizen_text || item.details || 'Emergency report'}"
+                  </p>
+
+                  <div className="flex items-center justify-between pt-1 text-[12px] text-text-muted">
+                    <span>
+                      {item.citizen_view?.hospital_name
+                        ? `Destination: ${item.citizen_view.hospital_name}`
+                        : 'Hospital dispatch pending'}
+                    </span>
+                    {['dispatched', 'patient_picked_up', 'processing'].includes(item.status) && (
+                      <button
+                        type="button"
+                        onClick={() => resumeIncident(item)}
+                        className="font-bold text-signal-hover underline hover:text-signal"
+                      >
+                        Open live tracking &rarr;
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
+
+        <div className="flex items-center justify-end border-t border-rule bg-paper-sunk px-5 py-3">
+          <Button size="sm" onClick={() => setShowHistory(false)}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+
   const shell = (children) => (
     <div className="mx-auto w-full max-w-[520px] px-4 py-5 lg:max-w-[720px]">{children}</div>
   );
@@ -265,13 +394,23 @@ export default function CitizenDashboard() {
             </div>
           </Panel>
         )}
-        <div className="mb-6">
-          <h1 className="font-display text-[clamp(22px,6vw,28px)] font-semibold leading-tight text-text">
-            Need emergency help?
-          </h1>
-          <p className="mt-1.5 text-[13px] leading-relaxed text-text-muted">
-            Tap SOS to prepare a demo report. Add details and review your location before sending.
-          </p>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="font-display text-[clamp(22px,6vw,28px)] font-semibold leading-tight text-text">
+              Need emergency help?
+            </h1>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-text-muted">
+              Tap SOS to prepare a demo report. Add details and review your location before sending.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadHistory}
+            className="tap inline-flex items-center gap-1.5 rounded-sm border border-rule bg-paper px-3 py-2 text-[12.5px] font-semibold text-text transition-colors hover:border-signal hover:text-signal-hover"
+          >
+            <History size={15} />
+            Emergency History
+          </button>
         </div>
 
         <div className="flex flex-1 flex-col items-center justify-center gap-6">
@@ -313,6 +452,8 @@ export default function CitizenDashboard() {
             className="tap flex w-full items-center justify-center gap-2 rounded-sm border border-ink bg-paper py-4 t-tag text-text hover:bg-ink hover:text-on-ink"
           />
         </div>
+
+        {historyModal}
       </div>,
     );
   }
@@ -627,6 +768,8 @@ export default function CitizenDashboard() {
       >
         Report another emergency
       </button>
+
+      {historyModal}
     </div>,
   );
 }

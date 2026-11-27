@@ -393,3 +393,17 @@
   color: var(--color-on-ink);
   border: 1px solid var(--color-critical);
 }
+
+/* Global ambient background glow & modern geometric grid */
+body {
+  position: relative;
+  min-height: 100vh;
+  background-color: var(--color-field);
+  background-image: 
+    radial-gradient(circle at 100% 0%, oklch(0.78 0.17 72 / 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 0% 100%, oklch(0.85 0.08 260 / 0.12) 0%, transparent 40%),
+    linear-gradient(to right, oklch(0.19 0.004 280 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(0.19 0.004 280 / 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+  background-attachment: fixed;
+}

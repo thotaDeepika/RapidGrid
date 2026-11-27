@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import shortId from '../utils/shortId';
-import { Check, BedDouble, Users, X } from 'lucide-react';
+import { Check, BedDouble, Users, X, User, Phone, FileText, History } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import LiveEmergencyChat from '../components/LiveEmergencyChat';
 import {
@@ -50,6 +50,11 @@ export default function HospitalDashboard() {
   const bedsEditing = React.useRef(false);
   const [openThread, setOpenThread] = useState(null);
   const [showAllModal, setShowAllModal] = useState(false);
+  const [admitting, setAdmitting] = useState({});
+  const [admittedList, setAdmittedList] = useState([]);
+  const [patientHistoryModal, setPatientHistoryModal] = useState(null); // incident or null
+  const [patientHistoryData, setPatientHistoryData] = useState(null);
+  const [loadingPatientHistory, setLoadingPatientHistory] = useState(false);
   const [conn, setConn] = useState('ok');
 
   useEffect(() => {
@@ -89,6 +94,40 @@ export default function HospitalDashboard() {
     const timer = setInterval(load, 2500);
     return () => { cancelled = true; clearInterval(timer); };
   }, [hospitalInfo]);
+
+  const viewPatientHistory = async (incident) => {
+    setPatientHistoryModal(incident);
+    setLoadingPatientHistory(true);
+    setPatientHistoryData(null);
+    try {
+      const id = hospitalInfo?.id || 'all';
+      const res = await fetch(`/api/hospital/${id}/patient_history/${encodeURIComponent(incident.incident_id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPatientHistoryData(data);
+      }
+    } catch {
+      /* offline */
+    } finally {
+      setLoadingPatientHistory(false);
+    }
+  };
+
+  const admitPatient = async (incidentId) => {
+    setAdmitting((prev) => ({ ...prev, [incidentId]: true }));
+    try {
+      const id = hospitalInfo?.id || 'all';
+      const res = await fetch(`/api/hospital/${id}/admit/${incidentId}`, { method: 'POST' });
+      if (res.ok) {
+        setAdmittedList((prev) => [...prev, incidentId]);
+        setIncoming((prev) => prev.filter((c) => c.incident_id !== incidentId));
+      }
+    } catch {
+      /* non-critical */
+    } finally {
+      setAdmitting((prev) => ({ ...prev, [incidentId]: false }));
+    }
+  };
 
   const patchResources = async (body, open) => {
     if (capacityRequest.current || !hospitalInfo?.id || hospitalInfo.id === 'all') return;
@@ -285,9 +324,30 @@ export default function HospitalDashboard() {
                             {c.emergency_type}
                           </span>
                         </div>
-                        <p className="mt-2 text-[13px] leading-relaxed text-text">
-                          {c.patient_summary}
-                        </p>
+                        <div className="mt-2.5">
+                          <span className="eyebrow text-text-muted">Description by patient</span>
+                          <p className="mt-0.5 text-[14px] font-medium leading-relaxed text-text">
+                            "{c.patient_summary}"
+                          </p>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xs border border-rule bg-paper-sunk px-3 py-2 text-[12px]">
+                          <div className="flex items-center gap-1.5 text-text">
+                            <User size={13} className="text-text-muted" />
+                            <span>Patient: <strong>{c.caller_name || 'Anonymous'}</strong></span>
+                          </div>
+                          {c.caller_phone && (
+                            <div className="flex items-center gap-1.5 text-text">
+                              <Phone size={13} className="text-text-muted" />
+                              <span className="font-mono">{c.caller_phone}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            <FileText size={13} className="text-text-muted" />
+                            <span className="t-meta text-text-faint">
+                              {c.registered ? 'Verified citizen record' : 'Emergency intake record'}
+                            </span>
+                          </div>
+                        </div>
                         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 t-meta text-text-faint">
                           <span>Unit {c.assigned_driver}</span>
                           <StatusTag status={c.status} />
@@ -295,31 +355,57 @@ export default function HospitalDashboard() {
                       </div>
 
                       <div className="flex w-full shrink-0 items-center justify-between gap-4 border-t border-rule pt-3 sm:w-auto sm:justify-end sm:border-0 sm:pt-0">
-                        <div className="text-right">
-                          <div className="eyebrow">Arrives in</div>
-                          <div className="font-mono text-[26px] font-bold leading-none text-signal-hover">
-                            {c.eta_minutes ?? '--'}
-                            <span className="ml-1 text-[13px] font-medium opacity-60">min</span>
+                        {c.unit_arrived ? (
+                          <div className="flex flex-col items-end gap-2">
+                            <span className="inline-flex items-center gap-1.5 rounded-xs border border-signal bg-signal/10 px-2.5 py-1 text-[12px] font-bold text-signal-hover">
+                              <Check size={14} /> Unit Arrived at Hospital
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ink"
+                              disabled={admitting[c.incident_id]}
+                              onClick={() => admitPatient(c.incident_id)}
+                              className="font-bold text-[12.5px]"
+                            >
+                              {admitting[c.incident_id] ? 'Admitting…' : 'Confirm Patient Admitted'}
+                            </Button>
                           </div>
-                        </div>
-                        {ack ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink px-2.5 py-1.5 t-tag text-text">
-                            <Check size={12} /> Acknowledged on this device
-                          </span>
                         ) : (
-                          <Button
-                            size="sm"
-                            onClick={() =>
-                              setAcknowledged((p) => ({ ...p, [c.incident_id]: true }))
-                            }
-                          >
-                            Acknowledge locally
-                          </Button>
+                          <>
+                            <div className="text-right">
+                              <div className="eyebrow">Arrives in</div>
+                              <div className="font-mono text-[26px] font-bold leading-none text-signal-hover">
+                                {c.eta_minutes ?? '--'}
+                                <span className="ml-1 text-[13px] font-medium opacity-60">min</span>
+                              </div>
+                            </div>
+                            {ack ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink px-2.5 py-1.5 t-tag text-text">
+                                <Check size={12} /> Acknowledged on this device
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  setAcknowledged((p) => ({ ...p, [c.incident_id]: true }))
+                                }
+                              >
+                                Acknowledge locally
+                              </Button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <div className="mt-3 flex flex-wrap items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={() => viewPatientHistory(c)}
+                        className="tap inline-flex items-center gap-1.5 py-1 text-[12.5px] font-semibold text-signal-hover hover:underline"
+                      >
+                        <History size={13} /> View Patient Emergency History
+                      </button>
                       <button
                         onClick={() =>
                           setOpenThread(openThread === c.incident_id ? null : c.incident_id)
@@ -415,9 +501,31 @@ export default function HospitalDashboard() {
                               </span>
                             </div>
 
-                            <p className="mt-2 text-[13px] leading-relaxed text-text">
-                              {c.patient_summary}
-                            </p>
+                            <div className="mt-2.5">
+                              <span className="eyebrow text-text-muted">Description by patient</span>
+                              <p className="mt-0.5 text-[14px] font-medium leading-relaxed text-text">
+                                "{c.patient_summary}"
+                              </p>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xs border border-rule bg-paper-sunk px-3 py-2 text-[12px]">
+                              <div className="flex items-center gap-1.5 text-text">
+                                <User size={13} className="text-text-muted" />
+                                <span>Patient: <strong>{c.caller_name || 'Anonymous'}</strong></span>
+                              </div>
+                              {c.caller_phone && (
+                                <div className="flex items-center gap-1.5 text-text">
+                                  <Phone size={13} className="text-text-muted" />
+                                  <span className="font-mono">{c.caller_phone}</span>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <FileText size={13} className="text-text-muted" />
+                                <span className="t-meta text-text-faint">
+                                  {c.registered ? 'Verified citizen record' : 'Emergency intake record'}
+                                </span>
+                              </div>
+                            </div>
 
                             <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-text-faint">
                               <span>Assigned unit: <strong className="text-text">{c.assigned_driver || 'Pending'}</strong></span>
@@ -429,31 +537,57 @@ export default function HospitalDashboard() {
                           </div>
 
                           <div className="flex shrink-0 flex-col items-end gap-2">
-                            <div className="text-right">
-                              <div className="eyebrow text-text-muted">Arrives in</div>
-                              <div className="font-mono text-[26px] font-bold leading-none text-signal-hover">
-                                {c.eta_minutes ?? '--'}
-                                <span className="ml-1 text-[13px] font-medium opacity-60">min</span>
+                            {c.unit_arrived ? (
+                              <div className="flex flex-col items-end gap-2">
+                                <span className="inline-flex items-center gap-1.5 rounded-xs border border-signal bg-signal/10 px-2.5 py-1 text-[12px] font-bold text-signal-hover">
+                                  <Check size={14} /> Unit Arrived at Hospital
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ink"
+                                  disabled={admitting[c.incident_id]}
+                                  onClick={() => admitPatient(c.incident_id)}
+                                  className="font-bold text-[12.5px]"
+                                >
+                                  {admitting[c.incident_id] ? 'Admitting…' : 'Confirm Patient Admitted'}
+                                </Button>
                               </div>
-                            </div>
-                            {ack ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink px-2.5 py-1 t-tag text-text">
-                                <Check size={12} /> Acknowledged
-                              </span>
                             ) : (
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  setAcknowledged((p) => ({ ...p, [c.incident_id]: true }))
-                                }
-                              >
-                                Acknowledge
-                              </Button>
+                              <>
+                                <div className="text-right">
+                                  <div className="eyebrow text-text-muted">Arrives in</div>
+                                  <div className="font-mono text-[26px] font-bold leading-none text-signal-hover">
+                                    {c.eta_minutes ?? '--'}
+                                    <span className="ml-1 text-[13px] font-medium opacity-60">min</span>
+                                  </div>
+                                </div>
+                                {ack ? (
+                                  <span className="inline-flex items-center gap-1.5 rounded-xs border border-ink px-2.5 py-1 t-tag text-text">
+                                    <Check size={12} /> Acknowledged
+                                  </span>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      setAcknowledged((p) => ({ ...p, [c.incident_id]: true }))
+                                    }
+                                  >
+                                    Acknowledge
+                                  </Button>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
 
                         <div className="mt-3 flex items-center justify-between border-t border-rule/50 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => viewPatientHistory(c)}
+                            className="tap inline-flex items-center gap-1.5 text-[12px] font-semibold text-signal-hover hover:underline"
+                          >
+                            <History size={13} /> View Patient Emergency History
+                          </button>
                           <button
                             onClick={() =>
                               setOpenThread(openThread === c.incident_id ? null : c.incident_id)
@@ -485,6 +619,102 @@ export default function HospitalDashboard() {
                 Times are live estimated travel times to {hospitalInfo?.name ?? 'this hospital'}.
               </span>
               <Button size="sm" onClick={() => setShowAllModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Patient Emergency History Modal for Hospital ER Desk */}
+      {patientHistoryModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs"
+          onClick={() => setPatientHistoryModal(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-[680px] flex-col overflow-hidden rounded-md border border-rule bg-paper shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-rule bg-paper-sunk px-5 py-3.5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <History size={16} className="text-signal-hover" />
+                  <h2 className="text-[15px] font-semibold text-text">
+                    Patient Emergency History · {patientHistoryData?.patient_name || patientHistoryModal.caller_name || 'Patient Record'}
+                  </h2>
+                </div>
+                <div className="mt-1 flex items-center gap-3 text-[12px] text-text-muted">
+                  <span>Phone: <strong className="font-mono text-text">{patientHistoryData?.phone || patientHistoryModal.caller_phone || 'Unregistered'}</strong></span>
+                  <span>Record: <strong className="text-text">{patientHistoryData?.registered ? 'Verified citizen account' : 'Emergency intake record'}</strong></span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPatientHistoryModal(null)}
+                className="tap rounded-sm p-1.5 text-text-muted hover:text-text"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-rule p-3">
+              {loadingPatientHistory ? (
+                <div className="p-8 text-center text-sm text-text-muted">Loading prior emergency records…</div>
+              ) : !patientHistoryData?.history?.length ? (
+                <div className="p-8 text-center text-sm text-text-muted">
+                  No prior emergency records on file for this patient.
+                </div>
+              ) : (
+                patientHistoryData.history.map((item) => (
+                  <div
+                    key={item.incident_id}
+                    className={`flex flex-col gap-2 p-4 transition-colors ${
+                      item.is_current ? 'bg-signal-wash/40 border-l-2 border-signal' : 'hover:bg-paper-hover'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[12px] font-bold text-text">
+                          {shortId(item.incident_id)}
+                        </span>
+                        {item.is_current && (
+                          <span className="rounded-xs bg-signal/20 px-1.5 py-0.5 text-[11px] font-bold text-signal-hover">
+                            CURRENT CALL
+                          </span>
+                        )}
+                        <span className="t-meta uppercase tracking-[0.1em] text-text-faint">
+                          {item.emergency_type}
+                        </span>
+                      </div>
+                      <StatusTag status={item.status} />
+                    </div>
+
+                    <p className="text-[13px] text-text leading-relaxed">
+                      "{item.citizen_text || 'Emergency description not provided'}"
+                    </p>
+
+                    <div className="flex items-center justify-between pt-1 text-[12px] text-text-muted">
+                      <span>
+                        {item.hospital_name ? `Receiving Hospital: ${item.hospital_name}` : 'Hospital routing pending'}
+                      </span>
+                      {item.assigned_driver && (
+                        <span>Assigned unit: <strong className="text-text">{item.assigned_driver}</strong></span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-rule bg-paper-sunk px-5 py-3">
+              <span className="text-[12px] text-text-muted">
+                {patientHistoryData?.records_count ?? 0} total case records found for this patient.
+              </span>
+              <Button size="sm" onClick={() => setPatientHistoryModal(null)}>
                 Close
               </Button>
             </div>

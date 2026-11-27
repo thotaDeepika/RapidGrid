@@ -3,7 +3,18 @@ import { Link } from 'react-router-dom';
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#faf9f6] text-[#1a1c1a] font-['Inter',sans-serif]">
+    <div className="relative min-h-screen overflow-hidden bg-transparent text-[#1a1c1a] font-['Inter',sans-serif]">
+      {/* Precision grid overlay */}
+      <div
+        className="pointer-events-none fixed inset-0 z-0 opacity-40"
+        style={{
+          backgroundImage: `
+            linear-gradient(to right, rgba(26, 28, 26, 0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(26, 28, 26, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '32px 32px',
+        }}
+      />
       {/* HEADER */}
       <header className="fixed top-0 w-full z-50 bg-[#131a33] shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 max-w-7xl mx-auto px-6 flex items-center justify-between">
@@ -60,10 +71,10 @@ export default function LandingPage() {
       </header>
 
       {/* MAIN BODY */}
-      <main className="w-full pt-16 bg-[#faf9f6]">
+      <main className="relative z-10 w-full pt-16 bg-transparent">
         <div className="flex flex-col w-full">
           {/* 1. HERO SECTION */}
-          <section className="w-full bg-[#faf9f6] relative overflow-hidden">
+          <section className="w-full bg-transparent relative overflow-hidden">
             <div className="absolute top-0 right-0 w-96 h-96 bg-[#f59e0b]/10 rounded-full blur-3xl -mt-16 -mr-16 pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-80 h-80 bg-[#d8deff]/40 rounded-full blur-3xl -ml-16 pointer-events-none"></div>
             <div className="max-w-7xl mx-auto px-6 py-8 relative z-10">
@@ -318,7 +329,7 @@ export default function LandingPage() {
           </section>
 
           {/* 3. CAPABILITIES GRID */}
-          <section className="w-full bg-[#faf9f6] py-8">
+          <section className="w-full bg-transparent py-8">
             <div className="max-w-7xl mx-auto px-6 flex flex-col gap-6">
               <div className="flex flex-col gap-1">
                 <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#855300]">
@@ -517,7 +528,7 @@ export default function LandingPage() {
           </section>
 
           {/* 5. WHAT IS REAL, AND WHAT IS NOT */}
-          <section className="w-full bg-[#faf9f6] py-8">
+          <section className="w-full bg-transparent py-8">
             <div className="max-w-7xl mx-auto px-6 flex flex-col gap-6">
               <div className="flex flex-col gap-1">
                 <span className="font-['Archivo_Narrow',sans-serif] text-[11px] font-bold uppercase tracking-wider text-[#534434]">

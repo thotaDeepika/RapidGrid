@@ -484,13 +484,12 @@ export default function MapOverlay({
     hospitalLayer.current = L.layerGroup().addTo(map.current);
     stationLayer.current = L.layerGroup().addTo(map.current);
     callLayer.current = L.layerGroup().addTo(map.current);
-    // All Bangalore hospitals: the named areas shown by default, the rest off.
-    osmNamedLayer.current = L.layerGroup().addTo(map.current);
+    // All Bangalore hospitals: off by default.
+    osmNamedLayer.current = L.layerGroup();
     osmOtherLayer.current = L.layerGroup();
     if (!fleetLayer.current) fleetLayer.current = L.layerGroup().addTo(map.current);
     const switches = L.control.layers(null, {
       Hospitals: hospitalLayer.current,
-      'Hospitals: Whitefield, Mathikere, venue': osmNamedLayer.current,
       'Other Bangalore hospitals (OSM)': osmOtherLayer.current,
       Stations: stationLayer.current,
       Vehicles: fleetLayer.current,

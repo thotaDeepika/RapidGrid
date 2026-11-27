@@ -425,10 +425,10 @@ export default function DriverDashboard() {
           onClick={completeHandover}
           disabled={busy}
           size="lg"
-          className="w-full"
+          className="w-full text-[15px] font-bold"
         >
-          <Check size={17} />
-          {busy ? 'Confirming…' : 'Patient handed over at ER'}
+          <Check size={18} />
+          {busy ? 'Confirming arrival…' : 'Reached Destination / Hospital (Patient Arrived)'}
         </Button>
       )}
 

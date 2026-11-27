@@ -201,8 +201,24 @@ export default function Login() {
   );
 
   return (
-    <div className="min-h-screen bg-field">
-      <div className="mx-auto max-w-[640px] px-4 py-10">
+    <div className="relative min-h-screen overflow-hidden bg-[#faf9f6]">
+      {/* Ambient background glows */}
+      <div className="pointer-events-none absolute -top-24 -right-24 h-96 w-96 rounded-full bg-[#f59e0b]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 h-96 w-96 rounded-full bg-[#d8deff]/50 blur-3xl" />
+
+      {/* Subtle modern geometric grid overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.4]"
+        style={{
+          backgroundImage: `
+            linear-gradient(to right, rgba(26, 28, 26, 0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(26, 28, 26, 0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: '32px 32px',
+        }}
+      />
+
+      <div className="relative z-10 mx-auto max-w-[640px] px-4 py-10">
         <header className="mb-7">
           <div className="flex items-center gap-2.5">
             <div className="grid h-9 w-9 place-items-center rounded-sm bg-signal font-mono text-[13px] font-bold text-ink">

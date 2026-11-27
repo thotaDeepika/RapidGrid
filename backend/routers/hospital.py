@@ -100,12 +100,14 @@ def _incoming(hospital_id: str) -> list[dict]:
         raise HTTPException(status_code=404, detail="Hospital not found")
     incoming = []
     for incident in ACTIVE_INCIDENTS:
-        if incident.get("status") not in {"dispatched", "patient_picked_up"}:
+        if incident.get("status") not in {"dispatched", "patient_picked_up", "completed"}:
             continue
         if (incident.get("vehicle_required") or "Ambulance") not in {"Ambulance", "Medical"} and not incident.get("include_ambulance_backup"):
             continue
         medical_unit = "primary" if (incident.get("vehicle_required") or "Ambulance") in {"Ambulance", "Medical"} else "ambulance"
-        if unit_statuses(incident).get(medical_unit) == "arrived":
+        unit_arrived = unit_statuses(incident).get(medical_unit) == "arrived" or incident.get("status") == "completed"
+        # If admitted into ER, remove from hospital view
+        if incident.get("admitted_at_hospital"):
             continue
         view = incident.get("citizen_view") or {}
         recommendation = (incident.get("action_plan") or {}).get("recommended_hospital") or {}
@@ -118,10 +120,15 @@ def _incoming(hospital_id: str) -> list[dict]:
             continue
         incoming.append({
             "incident_id": incident["incident_id"], "status": incident["status"],
+            "unit_arrived": unit_arrived,
             "emergency_type": incident.get("emergency_type") or view.get("emergency_type") or "general",
             "severity": incident.get("severity", view.get("severity", 0.5)),
-            "hospital_name": hospital_name, "eta_minutes": view.get("eta_minutes"),
-            "patient_summary": incident.get("details") or incident.get("citizen_text"),
+            "hospital_name": hospital_name, "eta_minutes": 0 if unit_arrived else view.get("eta_minutes"),
+            "patient_summary": incident.get("citizen_text") or incident.get("details") or "No patient description provided",
+            "clinical_classification": incident.get("details"),
+            "caller_name": incident.get("citizen_name"),
+            "caller_phone": incident.get("citizen_phone"),
+            "registered": bool(incident.get("citizen_id")),
             "assigned_driver": (incident.get("unit_assignments") or {}).get(medical_unit) or (incident.get("assigned_driver") if medical_unit == "primary" else None),
             "destination_on_divert": destination_on_divert(incident),
         })
@@ -165,6 +172,68 @@ async def get_hospital(hospital_id: str):
     if key is None:
         raise HTTPException(status_code=404, detail="Hospital not found")
     return _details(key)
+
+
+@router.get("/{hospital_id}/patient_history/{incident_id}")
+async def patient_history(hospital_id: str, incident_id: str, request: Request = None):
+    """Retrieve all prior emergency cases and records for this patient."""
+    _require_hospital_or_dispatch(request, hospital_id)
+    async with _INCIDENTS_LOCK:
+        target = next((i for i in ACTIVE_INCIDENTS if i["incident_id"] == incident_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        
+        cid = target.get("citizen_id")
+        phone = target.get("citizen_phone")
+        name = target.get("citizen_name")
+
+        matches = []
+        for inc in ACTIVE_INCIDENTS:
+            # Match by account ID, or by verified/typed phone number
+            is_match = False
+            if cid and inc.get("citizen_id") == cid:
+                is_match = True
+            elif phone and phone != "Unregistered" and inc.get("citizen_phone") == phone:
+                is_match = True
+            elif name and name not in {"Anonymous", "Anonymous Citizen"} and inc.get("citizen_name") == name:
+                is_match = True
+
+            if is_match:
+                view = inc.get("citizen_view") or {}
+                matches.append({
+                    "incident_id": inc["incident_id"],
+                    "created_at": inc.get("created_at"),
+                    "status": inc.get("status"),
+                    "emergency_type": inc.get("emergency_type") or view.get("emergency_type") or "emergency",
+                    "severity": inc.get("severity", 0.5),
+                    "citizen_text": inc.get("citizen_text") or inc.get("details"),
+                    "hospital_name": view.get("hospital_name"),
+                    "assigned_driver": inc.get("assigned_driver"),
+                    "is_current": inc["incident_id"] == incident_id,
+                })
+
+        return {
+            "patient_name": name or "Anonymous",
+            "phone": phone or "Unregistered",
+            "registered": bool(cid),
+            "records_count": len(matches),
+            "history": matches,
+        }
+
+
+@router.post("/{hospital_id}/admit/{incident_id}")
+async def admit_patient(hospital_id: str, incident_id: str, request: Request = None):
+    """Mark that an arriving patient has been admitted to ER."""
+    _require_hospital_or_dispatch(request, hospital_id)
+    from routers.incident import commit
+    async with _INCIDENTS_LOCK:
+        for inc in ACTIVE_INCIDENTS:
+            if inc["incident_id"] == incident_id:
+                inc["admitted_at_hospital"] = True
+                inc["admitted_timestamp"] = __import__("time").time()
+                await commit(inc)
+                return {"status": "admitted", "incident_id": incident_id}
+    raise HTTPException(status_code=404, detail="Incident not found")
 
 
 @router.patch("/{hospital_id}/resources")
