@@ -418,7 +418,7 @@ EMERGENCY_HUBS = {
         {"id": "AMB-HUB-12", "name": "Apollo Hospital (Bannerghatta Road) Emergency Ambulance Hub", "lat": 12.896305, "lng": 77.598349},
         {"id": "AMB-HUB-13", "name": "Aster CMI Hospital (Hebbal) Emergency Ambulance Hub", "lat": 13.054532, "lng": 77.591871},
         {"id": "AMB-HUB-14", "name": "Sakra World Hospital (Devarabeesanahalli) Emergency Ambulance Hub", "lat": 12.932315, "lng": 77.685248},
-        {"id": "AMB-HUB-15", "name": "MS Ramaiah Memorial Hospital Emergency Ambulance Hub", "lat": 13.028218, "lng": 77.569775},
+        {"id": "AMB-HUB-15", "name": "MS Ramaiah Memorial Hospital Emergency Ambulance Hub", "lat": 13.028332, "lng": 77.569784},
         {"id": "AMB-HUB-16", "name": "BGS Gleneagles Global Hospital (Kengeri) Emergency Ambulance Hub", "lat": 12.90306, "lng": 77.497498},
         {"id": "AMB-HUB-17", "name": "Vikram Hospital (Millers Road) Emergency Ambulance Hub", "lat": 12.965658, "lng": 77.609722},
         {"id": "AMB-HUB-18", "name": "Bangalore Baptist Hospital (Bellary Road) Emergency Ambulance Hub", "lat": 13.034725, "lng": 77.590171},
