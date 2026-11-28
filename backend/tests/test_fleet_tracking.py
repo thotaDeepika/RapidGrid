@@ -164,4 +164,7 @@ def test_a_unit_away_from_the_leg_start_drives_from_where_it_is():
                 "citizen_view": {"phase1_route_coordinates": route, "phase1_eta_minutes": 5}}
     simulator.step([incident], dt_s=0.1)
     pos = fleet.get("AMB-01")["position"]
-    assert abs(pos["lat"] - 13.0300) < 0.002 and abs(pos["lng"] - 77.6000) < 0.002  # no jump back
+    # It must not jump to the planned leg. A road join stays near the unit;
+    # a straight chord toward the leg is only the fallback when no road path exists.
+    assert abs(pos["lat"] - 13.0473) > 0.01
+    assert abs(pos["lat"] - 13.0300) < 0.004 and abs(pos["lng"] - 77.6000) < 0.004
