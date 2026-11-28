@@ -1,29 +1,554 @@
 {
   "_note": "Placeholders only. Copy to backend/contacts.json (git-ignored) or set RAPIDGRID_CONTACTS on the server, then add real numbers and 6-digit staff PINs. Without any staff_pin, staff sign-in is off (open local demo). tracker_key: a long random secret per vehicle for a background tracker app (see docs/LIVE-TRACKING.md); make one with: openssl rand -hex 16",
-  "hotline_112": { "name": "112 emergency line", "phone": null },
-  "dispatch": { "name": "City dispatch", "phone": null, "staff_pin": null, "tracker_key": null },
+  "hotline_112": {
+    "name": "112 emergency line",
+    "phone": null
+  },
+  "dispatch": {
+    "name": "City dispatch",
+    "phone": null,
+    "staff_pin": null,
+    "tracker_key": null
+  },
   "units": [
-    { "unit_id": "AMB-01", "type": "Ambulance", "station": "Aster CMI Emergency Ambulance Hub", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-02", "type": "Ambulance", "station": "Manipal Ambulance Base Depot", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-03", "type": "Ambulance", "station": "Victoria Hospital Paramedic Base", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "FIRE-01", "type": "Fire Engine", "station": "Hebbal Fire & Rescue Station #4", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "POLICE-01", "type": "Police Cruiser", "station": "Hebbal Police Patrol Base", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "RESCUE-01", "type": "Disaster Rescue", "station": "NDRF Disaster Rescue Hub North", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-04", "type": "Ambulance", "station": "Aster CMI Emergency Ambulance Hub", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-05", "type": "Ambulance", "station": "Manipal Ambulance Base Depot", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-06", "type": "Ambulance", "station": "Victoria Hospital Paramedic Base", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-07", "type": "Ambulance", "station": "Aster CMI Emergency Ambulance Hub", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-08", "type": "Ambulance", "station": "Manipal Ambulance Base Depot", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "AMB-09", "type": "Ambulance", "station": "Victoria Hospital Paramedic Base", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "FIRE-02", "type": "Fire Engine", "station": "High Grounds Central Fire Station", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "FIRE-03", "type": "Fire Engine", "station": "Jayanagar Emergency Fire Station", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "POLICE-02", "type": "Police Cruiser", "station": "Central MG Road Police Precinct", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "POLICE-03", "type": "Police Cruiser", "station": "Cubbon Park Traffic Police Hub", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null },
-    { "unit_id": "RESCUE-02", "type": "Disaster Rescue", "station": "Civil Defence Emergency Depot", "crew": "", "phone": "+918247042357", "staff_pin": null, "tracker_key": null }
+    {
+      "unit_id": "AMB-01",
+      "type": "Ambulance",
+      "station": "Aster CMI Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-02",
+      "type": "Ambulance",
+      "station": "Manipal Ambulance Base Depot",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-03",
+      "type": "Ambulance",
+      "station": "Victoria Hospital Paramedic Base",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "FIRE-01",
+      "type": "Fire Engine",
+      "station": "Hebbal Fire & Rescue Station #4",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "POLICE-01",
+      "type": "Police Cruiser",
+      "station": "Hebbal Police Patrol Base",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "RESCUE-01",
+      "type": "Disaster Rescue",
+      "station": "NDRF Disaster Rescue Hub North",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-04",
+      "type": "Ambulance",
+      "station": "Aster CMI Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-05",
+      "type": "Ambulance",
+      "station": "Manipal Ambulance Base Depot",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-06",
+      "type": "Ambulance",
+      "station": "Victoria Hospital Paramedic Base",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-07",
+      "type": "Ambulance",
+      "station": "Aster CMI Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-08",
+      "type": "Ambulance",
+      "station": "Manipal Ambulance Base Depot",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-09",
+      "type": "Ambulance",
+      "station": "Victoria Hospital Paramedic Base",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "FIRE-02",
+      "type": "Fire Engine",
+      "station": "High Grounds Central Fire Station",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "FIRE-03",
+      "type": "Fire Engine",
+      "station": "Jayanagar Emergency Fire Station",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "POLICE-02",
+      "type": "Police Cruiser",
+      "station": "Central MG Road Police Precinct",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "POLICE-03",
+      "type": "Police Cruiser",
+      "station": "Cubbon Park Traffic Police Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "RESCUE-02",
+      "type": "Disaster Rescue",
+      "station": "Civil Defence Emergency Depot",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-10",
+      "type": "Ambulance",
+      "station": "Sri Jayadeva Institute of Cardiovascular Sciences and Research Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-11",
+      "type": "Ambulance",
+      "station": "NIMHANS (National Institute of Mental Health and Neurosciences) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-12",
+      "type": "Ambulance",
+      "station": "Victoria Hospital (BMCRI) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-13",
+      "type": "Ambulance",
+      "station": "Sanjay Gandhi Institute of Trauma and Orthopaedics Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-14",
+      "type": "Ambulance",
+      "station": "Narayana Health City (Bommasandra) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-15",
+      "type": "Ambulance",
+      "station": "St. John's Medical College Hospital Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-16",
+      "type": "Ambulance",
+      "station": "Manipal Hospital (Old Airport Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-17",
+      "type": "Ambulance",
+      "station": "Fortis Hospital (Bannerghatta Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-18",
+      "type": "Ambulance",
+      "station": "Apollo Hospital (Bannerghatta Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-19",
+      "type": "Ambulance",
+      "station": "Aster CMI Hospital (Hebbal) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-20",
+      "type": "Ambulance",
+      "station": "Sakra World Hospital (Devarabeesanahalli) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-21",
+      "type": "Ambulance",
+      "station": "MS Ramaiah Memorial Hospital Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-22",
+      "type": "Ambulance",
+      "station": "BGS Gleneagles Global Hospital (Kengeri) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-23",
+      "type": "Ambulance",
+      "station": "Vikram Hospital (Millers Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-24",
+      "type": "Ambulance",
+      "station": "Bangalore Baptist Hospital (Bellary Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-25",
+      "type": "Ambulance",
+      "station": "Bowring and Lady Curzon Hospital Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-26",
+      "type": "Ambulance",
+      "station": "Sparsh Hospital (Palace Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-27",
+      "type": "Ambulance",
+      "station": "Hosmat Hospital (Richmond Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-28",
+      "type": "Ambulance",
+      "station": "Columbia Asia Hospital (Hebbal) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-29",
+      "type": "Ambulance",
+      "station": "Mallya Hospital (Vittal Mallya Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-30",
+      "type": "Ambulance",
+      "station": "Manipal Hospital (Whitefield) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-31",
+      "type": "Ambulance",
+      "station": "Manipal Hospital (Sarjapur Road) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-32",
+      "type": "Ambulance",
+      "station": "Kauvery Hospital (Electronic City) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    },
+    {
+      "unit_id": "AMB-33",
+      "type": "Ambulance",
+      "station": "Rainbow Children's Hospital (BTM Layout) Emergency Ambulance Hub",
+      "crew": "",
+      "phone": "+918247042357",
+      "staff_pin": null,
+      "tracker_key": null
+    }
   ],
   "hospitals": [
-    { "hospital_id": "blr-007", "name": "Aster CMI Hospital (Hebbal)", "emergency_phone": "+917032125015", "icu_phone": "+917032125015", "staff_pin": null },
-    { "hospital_id": "blr-001", "name": "Manipal Hospital (Old Airport Road)", "emergency_phone": "+917032125015", "icu_phone": "+917032125015", "staff_pin": null },
-    { "hospital_id": "blr-009", "name": "MS Ramaiah Memorial Hospital", "emergency_phone": "+917032125015", "icu_phone": "+917032125015", "staff_pin": null }
+    {
+      "hospital_id": "blr-007",
+      "name": "Aster CMI Hospital (Hebbal)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-001",
+      "name": "Manipal Hospital (Old Airport Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-009",
+      "name": "MS Ramaiah Memorial Hospital",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-019",
+      "name": "Sri Jayadeva Institute of Cardiovascular Sciences and Research",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-010",
+      "name": "NIMHANS (National Institute of Mental Health and Neurosciences)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-022",
+      "name": "Victoria Hospital (BMCRI)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-024",
+      "name": "Sanjay Gandhi Institute of Trauma and Orthopaedics",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-004",
+      "name": "Narayana Health City (Bommasandra)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-005",
+      "name": "St. John's Medical College Hospital",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-002",
+      "name": "Fortis Hospital (Bannerghatta Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-003",
+      "name": "Apollo Hospital (Bannerghatta Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-006",
+      "name": "Sakra World Hospital (Devarabeesanahalli)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-008",
+      "name": "BGS Gleneagles Global Hospital (Kengeri)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-011",
+      "name": "Vikram Hospital (Millers Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-020",
+      "name": "Bangalore Baptist Hospital (Bellary Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-023",
+      "name": "Bowring and Lady Curzon Hospital",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-013",
+      "name": "Sparsh Hospital (Palace Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-027",
+      "name": "Hosmat Hospital (Richmond Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-012",
+      "name": "Columbia Asia Hospital (Hebbal)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-028",
+      "name": "Mallya Hospital (Vittal Mallya Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-015",
+      "name": "Manipal Hospital (Whitefield)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-029",
+      "name": "Manipal Hospital (Sarjapur Road)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-016",
+      "name": "Kauvery Hospital (Electronic City)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    },
+    {
+      "hospital_id": "blr-018",
+      "name": "Rainbow Children's Hospital (BTM Layout)",
+      "emergency_phone": "+917032125015",
+      "icu_phone": "+917032125015",
+      "staff_pin": null
+    }
   ]
 }

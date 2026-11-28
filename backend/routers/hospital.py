@@ -221,6 +221,45 @@ async def patient_history(hospital_id: str, incident_id: str, request: Request =
         }
 
 
+@router.get("/{hospital_id}/admits")
+async def get_admitted_cases(hospital_id: str, response: Response, name: str | None = None, request: Request = None):
+    """Retrieve history of admitted patients at this hospital."""
+    _require_hospital_or_dispatch(request, hospital_id)
+    response.headers["Cache-Control"] = "no-store"
+    key = None if hospital_id == "all" else _resolve(hospital_id)
+    admits = []
+    async with _INCIDENTS_LOCK:
+        for incident in ACTIVE_INCIDENTS:
+            if not incident.get("admitted_at_hospital"):
+                continue
+            view = incident.get("citizen_view") or {}
+            recommendation = (incident.get("action_plan") or {}).get("recommended_hospital") or {}
+            assigned_id = incident.get("approved_hospital_id") or recommendation.get("hospital_id")
+            assigned_key = _resolve(str(assigned_id)) if assigned_id else None
+            hospital_name = view.get("hospital_name") or recommendation.get("name")
+            if assigned_key is None and hospital_name:
+                assigned_key = _resolve(hospital_name)
+            if hospital_id != "all" and assigned_key != key:
+                continue
+            medical_unit = "primary" if (incident.get("vehicle_required") or "Ambulance") in {"Ambulance", "Medical"} else "ambulance"
+            admits.append({
+                "incident_id": incident["incident_id"],
+                "status": "admitted",
+                "emergency_type": incident.get("emergency_type") or view.get("emergency_type") or "general",
+                "severity": incident.get("severity", view.get("severity", 0.5)),
+                "hospital_name": hospital_name,
+                "admitted_timestamp": incident.get("admitted_timestamp"),
+                "patient_summary": incident.get("citizen_text") or incident.get("details") or "No patient description provided",
+                "clinical_classification": incident.get("details"),
+                "caller_name": incident.get("citizen_name"),
+                "caller_phone": incident.get("citizen_phone"),
+                "registered": bool(incident.get("citizen_id")),
+                "assigned_driver": (incident.get("unit_assignments") or {}).get(medical_unit) or (incident.get("assigned_driver") if medical_unit == "primary" else None),
+            })
+    admits.sort(key=lambda x: x.get("admitted_timestamp") or 0, reverse=True)
+    return {"admits": snapshot(admits)}
+
+
 @router.post("/{hospital_id}/admit/{incident_id}")
 async def admit_patient(hospital_id: str, incident_id: str, request: Request = None):
     """Mark that an arriving patient has been admitted to ER."""
