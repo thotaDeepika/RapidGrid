@@ -10,6 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from '../components/ui';
 
 const SCENE = { lat: 13.0358, lng: 77.597 }; // near Hebbal
@@ -452,6 +453,9 @@ export default function GuidedDemo() {
               </p>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
+              <Link to="/" className="tap inline-flex items-center rounded-sm border border-rule px-3 py-2 text-[13px] font-semibold text-text">
+                Home
+              </Link>
               <Button variant="quiet" aria-pressed={projector} onClick={() => setProjector((v) => !v)}>
                 {projector ? 'Exit projector' : 'Projector'}
               </Button>
@@ -501,7 +505,7 @@ export default function GuidedDemo() {
             <div className="rounded-sm border border-rule bg-paper px-3 py-2">
               <div className="eyebrow">What is happening</div>
               <p role="status" aria-live="polite" className="mt-1 text-[14px] leading-relaxed">
-                {caption ?? 'This tour plays the official scenario: an ambulance is sent to a caller, a road on its way closes, and the monitoring agent works out what to do. Press "Next step" to begin; each step shows the screen where it happens.'}
+                {caption ?? 'This tour plays the official scenario: an ambulance is sent to a caller, a road on its way closes, and the monitoring agent works out what to do. Press "Next step" to begin; each step shows the screen where it happens. On the map the ambulance is the vehicle itself: it follows the planned streets and turns to face the road.'}
               </p>
               {lastDone && !busy && (
                 <p className="mt-1.5 text-[12.5px] leading-relaxed text-text-muted">{lastDone.what}</p>
