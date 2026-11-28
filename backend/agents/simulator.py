@@ -304,8 +304,13 @@ def _road_approach(here: dict, route: list[dict]) -> Optional[list[dict]]:
     path = local_router.find_path((here["lat"], here["lng"]), (route[0]["lat"], route[0]["lng"]))
     if not path or len(path["coordinates"]) < 2:
         return None
-    approach = path["coordinates"][:-1]
-    return approach or None
+    coords = path["coordinates"]
+    leg_start = route[0]
+    # Drop only a duplicated leg start. The last graph node is the road
+    # the leg begins on, and skipping it cuts the corner.
+    if coords[-1]["lat"] == leg_start["lat"] and coords[-1]["lng"] == leg_start["lng"]:
+        coords = coords[:-1]
+    return coords or None
 
 
 def reset() -> None:

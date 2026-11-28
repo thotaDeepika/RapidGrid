@@ -157,14 +157,14 @@ def test_track_shows_the_unit_and_plan_without_crew_details():
 
 
 def test_a_unit_away_from_the_leg_start_drives_from_where_it_is():
+    simulator.reset()
     fleet.assign("INC-1", "Ambulance", HEBBAL, prefer_station="Aster CMI Emergency Ambulance Hub")
     fleet.record_position("AMB-01", 13.0300, 77.6000, source="simulated")  # 2 km from the leg start
     route = [{"lat": 13.0473, "lng": 77.5908}, HEBBAL]
     incident = {"incident_id": "INC-1", "status": "dispatched",
                 "citizen_view": {"phase1_route_coordinates": route, "phase1_eta_minutes": 5}}
-    simulator.step([incident], dt_s=0.1)
+    simulator.step([incident], dt_s=2)
     pos = fleet.get("AMB-01")["position"]
-    # It must not jump to the planned leg. A road join stays near the unit;
-    # a straight chord toward the leg is only the fallback when no road path exists.
+    # The road out of this yard runs east. A straight line to the leg start runs west.
+    assert pos["lng"] > 77.601
     assert abs(pos["lat"] - 13.0473) > 0.01
-    assert abs(pos["lat"] - 13.0300) < 0.004 and abs(pos["lng"] - 77.6000) < 0.004
