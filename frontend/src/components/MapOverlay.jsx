@@ -113,14 +113,22 @@ function marker(kind, label) {
 // bearing (0 north, clockwise), which is the same direction CSS rotate uses.
 function ambulanceSvg(px, heading) {
   const turn = Number.isFinite(heading) ? heading : 0;
+  // Ordinary ambulance colours: white body, red cross, red and blue lamps.
+  // Nose points up so a compass bearing rotates it the same way CSS does.
   return `<svg class="rg-ambulance-body" viewBox="0 0 64 64" width="${px}" height="${px}" aria-hidden="true" style="display:block;overflow:visible;transform:rotate(${turn}deg);transform-origin:50% 50%">
-    <path d="M23 18c0-6 3.6-10 9-10s9 4 9 10v24.5c0 3.2-2.4 5.5-5.4 5.5h-7.2c-3 0-5.4-2.3-5.4-5.5V18z" fill="#1c1c1e"/>
-    <path d="M26.2 18.4c.7-3.4 2.8-5.6 5.8-5.6s5.1 2.2 5.8 5.6V24H26.2v-5.6z" fill="#f4f1ea"/>
-    <rect x="22.2" y="28.2" width="19.6" height="3.1" fill="#e8a020"/>
-    <rect x="27.2" y="24.2" width="9.6" height="2.1" rx="0.4" fill="#c23a2b"/>
-    <path d="M32 34.2v8.2M28.1 38.3h7.8" stroke="#f4f1ea" stroke-width="2.4"/>
-    <rect x="19.4" y="22.4" width="2.4" height="5.2" rx="0.7" fill="#2a282e"/>
-    <rect x="42.2" y="22.4" width="2.4" height="5.2" rx="0.7" fill="#2a282e"/>
+    <rect x="15.2" y="28" width="4.4" height="8.2" rx="1.3" fill="#1a1a1a"/>
+    <rect x="44.4" y="28" width="4.4" height="8.2" rx="1.3" fill="#1a1a1a"/>
+    <rect x="15.2" y="45" width="4.4" height="8.2" rx="1.3" fill="#1a1a1a"/>
+    <rect x="44.4" y="45" width="4.4" height="8.2" rx="1.3" fill="#1a1a1a"/>
+    <rect x="17.2" y="13.2" width="4" height="2.4" rx="0.7" fill="#1a1a1a"/>
+    <rect x="42.8" y="13.2" width="4" height="2.4" rx="0.7" fill="#1a1a1a"/>
+    <path d="M23.5 6.2h17c2.6 0 4.3 1.8 4.3 4.2V22H19.2V10.4c0-2.4 1.7-4.2 4.3-4.2z" fill="#ffffff" stroke="#b5b5b5" stroke-width="1"/>
+    <rect x="22.6" y="9.4" width="18.8" height="6.6" rx="0.8" fill="#2a3140"/>
+    <rect x="23.4" y="19.6" width="8.2" height="3.4" rx="0.9" fill="#e10600"/>
+    <rect x="32.4" y="19.6" width="8.2" height="3.4" rx="0.9" fill="#1d4ed8"/>
+    <rect x="19.2" y="24" width="25.6" height="33.2" rx="2.4" fill="#ffffff" stroke="#b5b5b5" stroke-width="1"/>
+    <rect x="29.1" y="30.4" width="5.8" height="17.2" fill="#e10600"/>
+    <rect x="23.4" y="36.1" width="17.2" height="5.8" fill="#e10600"/>
   </svg>`;
 }
 
