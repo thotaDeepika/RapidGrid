@@ -337,7 +337,7 @@ export default function HospitalDashboard() {
                         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xs border border-rule bg-paper-sunk px-3 py-2 text-[12px]">
                           <div className="flex items-center gap-1.5 text-text">
                             <User size={13} className="text-text-muted" />
-                            <span>Patient: <strong>{c.caller_name || 'Anonymous'}</strong></span>
+                            <span>Patient: <strong>{c.caller_name || 'Name not displayed'}</strong></span>
                           </div>
                           {c.caller_phone && (
                             <div className="flex items-center gap-1.5 text-text">
@@ -515,7 +515,7 @@ export default function HospitalDashboard() {
                             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xs border border-rule bg-paper-sunk px-3 py-2 text-[12px]">
                               <div className="flex items-center gap-1.5 text-text">
                                 <User size={13} className="text-text-muted" />
-                                <span>Patient: <strong>{c.caller_name || 'Anonymous'}</strong></span>
+                                <span>Patient: <strong>{c.caller_name || 'Name not displayed'}</strong></span>
                               </div>
                               {c.caller_phone && (
                                 <div className="flex items-center gap-1.5 text-text">

@@ -183,6 +183,9 @@ export default function Login() {
 
   useEffect(() => {
     if (directoryState !== 'ready') return;
+    // A choice made while the directory was loading stays. The deep link only
+    // applies when the portal list is still showing.
+    if (picking) return;
     const pick = new URLSearchParams(window.location.search).get('pick');
     if (pick !== 'dispatcher') return;
     if (directory.enabled) {
@@ -191,6 +194,7 @@ export default function Login() {
     } else {
       enter('dispatcher');
     }
+    // picking is read once when the directory becomes ready. enter changes every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [directoryState, directory.enabled]);
 
