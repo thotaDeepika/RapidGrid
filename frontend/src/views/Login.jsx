@@ -177,7 +177,7 @@ export default function Login() {
   const enter = (roleId, profile = null) => {
     login(roleId, profile);
     const next = new URLSearchParams(window.location.search).get('next');
-    const safe = ['/dispatcher', '/driver', '/hospital', '/control'];
+    const safe = roleId === 'dispatcher' ? ['/dispatcher', '/control'] : [`/${roleId}`];
     navigate(safe.includes(next) ? next : `/${roleId}`);
   };
 

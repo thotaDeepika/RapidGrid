@@ -433,7 +433,7 @@ export default function DispatcherDashboard() {
                   </div>
                 }
               />
-              <div className="relative z-0 min-h-[300px] flex-1 overflow-hidden sm:min-h-[360px] lg:min-h-[420px]">
+              <div className="relative z-0 h-[min(70vh,640px)] w-full overflow-hidden">
                 {routeCoords.length > 0 || view.phase1_route_coordinates?.length > 0 ? (
                   <MapOverlay
                     height="100%"
