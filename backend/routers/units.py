@@ -66,6 +66,10 @@ def store_fix(unit_id: str, lat: float, lng: float, *, accuracy_m=None, heading=
     Returns the response body; raises HTTPException for a bad fix."""
     from routers.incident import in_service_area
 
+    stale = captured_at is not None and captured_at < time.time() - fleet.MAX_FIX_AGE_S
+    if stale and not in_service_area(lat, lng):
+        # A delayed fix from outside the area must not flag the unit now.
+        return {"unit_id": unit_id, "ignored": "captured too long ago"}
     if not in_service_area(lat, lng):
         if fleet.get(unit_id) is not None:  # never grow the map for unknown ids
             _OUT_OF_AREA[unit_id] = time.time()

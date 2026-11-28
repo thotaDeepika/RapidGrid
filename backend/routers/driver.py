@@ -220,6 +220,9 @@ async def claim_dispatch(payload: ClaimPayload, request: Request = None):
         if unit_statuses(incident)[payload.unit_type] == "arrived":
             raise HTTPException(status_code=409, detail="This unit has already completed its assignment")
         _claim(incident, payload.driver_id, payload.unit_type)
+        if payload.unit_type == "ambulance":
+            import fleet
+            fleet.hold_backup(payload.driver_id, payload.incident_id)
         # Claiming again must never rewind a case already being transported.
         await commit(incident)
         return {"status": "claimed", "incident_id": payload.incident_id, "driver_id": payload.driver_id,

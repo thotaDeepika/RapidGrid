@@ -80,7 +80,7 @@ def _save(strict: bool = False) -> None:
         return  # never overwrite stored assignments with an unloaded fleet
     snapshot = {}
     for uid, u in _units.items():
-        snapshot[uid] = {k: u.get(k) for k in ("status", "incident_id", "gps_incident")}
+        snapshot[uid] = {k: u.get(k) for k in ("status", "incident_id", "gps_incident", "backup_incident")}
         snapshot[uid]["on_duty"] = u.get("on_duty", True)
         if u["position"].get("source") == "gps":
             # A real vehicle's last place, kept after its call ends too (the
@@ -127,7 +127,8 @@ def load(attempts: int = 3) -> None:
                 continue
             previous = _units.get(entry.unit_id) or {}
             saved = stored.get(entry.unit_id) or {}
-            real = bool(saved.get("gps_incident")) and saved.get("gps_incident") == saved.get("incident_id")
+            call = saved.get("incident_id") or saved.get("backup_incident")
+            real = bool(call) and saved.get("gps_incident") == call
             # The last real place (kept after the call ended) is restored as a
             # position only: the unit's status and call marker are unchanged.
             saved_pos = saved.get("position")
@@ -147,6 +148,7 @@ def load(attempts: int = 3) -> None:
                 # A real vehicle stays real across a restart (the simulator
                 # must not start driving it before its phone's next fix).
                 "gps_incident": saved.get("gps_incident") if real else None,
+                "backup_incident": saved.get("backup_incident"),
                 # Off duty: shown on the map, never dispatched.
                 "on_duty": saved.get("on_duty", True) is not False,
                 "position": previous.get("position") or saved_pos
@@ -231,6 +233,10 @@ def assign(incident_id: str, unit_type: str, near: dict, prefer_station: Optiona
         chosen = preferred[0] if preferred else min(free, key=lambda u: _haversine(u["position"], near))
         chosen["status"] = "assigned"
         chosen["incident_id"] = incident_id
+        # A phone already sharing stays a real vehicle on this call. A stale
+        # fix from an earlier call does not, so a quiet unit can still be simulated.
+        if chosen["position"].get("source") == "gps" and fix_age_s(chosen["position"]) < GPS_FRESH_S:
+            chosen["gps_incident"] = incident_id
         try:
             _save(strict=True)
         except Exception:
@@ -277,6 +283,8 @@ def swap(incident_id: str, new_unit_id: str) -> dict:
             u.update(status="available", incident_id=None)
         new["status"] = "assigned"
         new["incident_id"] = incident_id
+        if new["position"].get("source") == "gps" and fix_age_s(new["position"]) < GPS_FRESH_S:
+            new["gps_incident"] = incident_id
         try:
             _save(strict=True)
         except Exception:
@@ -308,6 +316,11 @@ def release(incident_id: str) -> None:
                 u.update(status="available", incident_id=None)
                 _park(u)
                 _trails[u["unit_id"]].clear()
+                changed = True
+            if u.get("backup_incident") == incident_id:
+                u["backup_incident"] = None
+                if u.get("gps_incident") == incident_id:
+                    u["gps_incident"] = None
                 changed = True
         if changed:
             _save()
@@ -356,11 +369,16 @@ def record_position(unit_id: str, lat: float, lng: float, *, source: str,
             if speed_mps is not None:
                 fix["speed_mps"] = speed_mps
         u["position"] = fix
-        if source == "gps" and u.get("incident_id"):
-            first = u.get("gps_incident") != u["incident_id"]
-            u["gps_incident"] = u["incident_id"]
+        if source == "gps":
+            call = u.get("incident_id") or u.get("backup_incident")
+            first = False
+            if call:
+                first = u.get("gps_incident") != call
+                u["gps_incident"] = call
             if first or now - u.get("saved_at", 0) >= SAVE_REAL_POSITION_S:
-                # So a restart still knows it is real, and roughly where.
+                # Idle fixes are stored too, so a restart does not put the
+                # vehicle back at its station. On a call, the first fix also
+                # marks it real so the simulator does not drive it.
                 u["saved_at"] = now
                 _save()
         _trails[unit_id].append({"lat": lat, "lng": lng, "at": now, "source": source})
@@ -391,11 +409,25 @@ def set_duty(unit_id: str, on_duty: bool) -> dict:
         return dict(u, position=dict(u["position"]))
 
 
+def hold_backup(unit_id: str, incident_id: str) -> None:
+    """Remember a backup claim. It is not the fleet assignment, but a phone
+    fix on that claim still makes the unit a real vehicle."""
+    _ensure()
+    with _lock:
+        unit = _units.get(unit_id)
+        if unit is not None:
+            unit["backup_incident"] = incident_id
+
+
 def real_vehicle(u: Optional[dict]) -> bool:
     """True when this unit's phone has sent a fix on its current call: it is
     a real vehicle until the call ends, whether or not its phone is sending
-    right now."""
-    return bool(u) and u.get("incident_id") is not None and u.get("gps_incident") == u.get("incident_id")
+    right now. A backup claim counts; it lives on the incident, not as the
+    fleet assignment."""
+    if not u:
+        return False
+    call = u.get("incident_id") or u.get("backup_incident")
+    return call is not None and u.get("gps_incident") == call
 
 
 def fix_age_s(position: dict) -> float:

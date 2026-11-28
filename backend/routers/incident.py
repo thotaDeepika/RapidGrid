@@ -959,6 +959,8 @@ async def approve_incident(incident_id: str, payload: ApprovePayload, request: R
             def open_now(h):
                 return (_resolve(str(h.get("hospital_id", ""))) or h.get("hospital_id")) not in hospital_agent.diverted
 
+            if (inc.get("citizen_view") or {}).get("phase1_route_degraded"):
+                raise HTTPException(status_code=409, detail="No road route to the scene; the call stays in the queue")
             if backup_hospital and not open_now(backup_hospital):
                 # The backup ambulance needs a destination that is open: the
                 # next ranked one, or none and dispatch is told.
@@ -995,6 +997,8 @@ async def approve_incident(incident_id: str, payload: ApprovePayload, request: R
         canonical = _resolve(str(target.get("hospital_id", ""))) or _resolve(target["name"])
         if canonical in hospital_agent.diverted:
             raise HTTPException(status_code=409, detail="That hospital is on divert; select another destination")
+        if (inc.get("citizen_view") or {}).get("phase1_route_degraded"):
+            raise HTTPException(status_code=409, detail="No road route to the scene; the call stays in the queue")
         origin = dict(inc["location"])
         destination = dict(target["location"])
     # Network I/O does not hold the incident lock or block the event loop.

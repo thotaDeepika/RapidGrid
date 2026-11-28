@@ -148,9 +148,6 @@ async def tracker_fix(request: Request):
     if not contacts.trackers_configured():
         raise HTTPException(status_code=404, detail="Not Found")
     client = security.client_key(request)
-    wait = _wait(client)
-    if wait:
-        raise HTTPException(status_code=429, detail="Too many wrong keys", headers={"Retry-After": str(wait)})
     declared = request.headers.get("content-length")
     if declared is not None and (not declared.isdigit() or int(declared) > _MAX_BODY):
         raise HTTPException(status_code=413, detail="Body too large")
@@ -164,6 +161,11 @@ async def tracker_fix(request: Request):
     key = str(fields.get("id") or "")
     unit_id = contacts.unit_for_tracker(key) if 0 < len(key) <= 128 else None
     if unit_id is None:
+        # A valid key from this address still goes through. Only unknown keys
+        # are held, so one phone guessing cannot silence the others behind it.
+        wait = _wait(client)
+        if wait:
+            raise HTTPException(status_code=429, detail="Too many wrong keys", headers={"Retry-After": str(wait)})
         _wrong_key(client, key)
         raise HTTPException(status_code=401, detail="Unknown tracker")
 

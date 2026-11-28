@@ -69,8 +69,10 @@ def test_a_wrong_key_is_refused_and_throttled(trackers):
     assert client.get("/api/track?id=AMB-01&lat=13.04&lon=77.59").status_code == 401  # a unit id is not a key
     for n in range(tracker._WRONG_KEYS_PER_CLIENT - 1):  # guessing: different keys
         assert client.get(f"/api/track?id=guess{n:04d}&lat=13.04&lon=77.59").status_code == 401
-    assert client.get(f"/api/track?id={KEY}&lat=13.04&lon=77.59").status_code == 429
-    assert fleet.get("AMB-01")["position"]["source"] == "station"
+    # A real tracker at this address still reports. Only another wrong key waits.
+    assert client.get(f"/api/track?id={KEY}&lat=13.04&lon=77.59").status_code == 200
+    assert fleet.get("AMB-01")["position"]["source"] == "gps"
+    assert client.get("/api/track?id=guess-after&lat=13.04&lon=77.59").status_code == 429
     # Its own bucket: operator and staff sign-in are not throttled by it.
     assert len(security._all_failures) == 0
 

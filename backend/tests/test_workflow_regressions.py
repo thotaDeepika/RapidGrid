@@ -73,6 +73,18 @@ def seed(status="awaiting_dispatcher_approval", **extra):
 
 
 
+def test_approval_refuses_a_call_with_no_road_to_the_scene(client, mocked_route):
+    seed("awaiting_dispatcher_approval")
+    seed_view = incident.ACTIVE_INCIDENTS[0]["citizen_view"]
+    seed_view["phase1_route_degraded"] = True
+    seed_view["phase1_route_coordinates"] = []
+    response = client.post("/api/incidents/INC-review/approve", json={
+        "dispatcher_id": "reviewer", "approved_hospital": "blr-007", "approved_route": "review-route",
+    })
+    assert response.status_code == 409
+    assert incident.ACTIVE_INCIDENTS[0]["status"] == "awaiting_dispatcher_approval"
+
+
 def test_a_hospital_only_sees_and_admits_its_own_arrived_patient(client):
     seed("dispatched", approved_hospital_id="blr-007", citizen_id="citizen-a", citizen_phone="+919800000001")
     incident.ACTIVE_INCIDENTS.append({

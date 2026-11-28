@@ -53,6 +53,17 @@ _PROVIDER_FRESHNESS_S = 300.0
 GOOGLE_TIMEOUT_S = 4.0
 
 
+def _blocked_edges(request: RouteRequest) -> set[int]:
+    """Edge ids this request treats as closed, ignoring anything that is not an id."""
+    edges: set[int] = set()
+    for raw in request.blocked_segments or []:
+        try:
+            edges.add(int(str(raw).strip()))
+        except (TypeError, ValueError):
+            continue
+    return edges
+
+
 def _active_interventions() -> int:
     """Closed plus obstructed segments in the city model (0 when it is not loaded)."""
     try:
@@ -188,14 +199,21 @@ class RouteOptimizationAgent:
             return self._local_route(request, reason="no API key configured")
 
         # Google knows real traffic but not the closures and incidents drawn
-        # in our city model. While any are active, route on the graph that
-        # does, so the dispatched route and the hospital ranking agree.
+        # in our city model, nor edges this request marked blocked. While any
+        # are active, route on the graph that does, so the dispatched route
+        # and the hospital ranking agree. A cached Google route is the same
+        # problem: it was computed before these edges were closed.
         interventions = _active_interventions()
-        if interventions:
+        requested = _blocked_edges(request)
+        if interventions or requested:
+            parts = []
+            if interventions:
+                parts.append(f"{interventions} closed or obstructed segment(s) in the city model")
+            if requested:
+                parts.append(f"{len(requested)} segment(s) blocked on this request")
             return self._local_route(
                 request,
-                reason=f"{interventions} closed or obstructed segment(s) in the city model; "
-                "Google Routes does not know about them",
+                reason="; ".join(parts) + "; Google Routes does not know about them",
             )
 
         cache_key = self._cache_key(request)
@@ -320,6 +338,7 @@ class RouteOptimizationAgent:
         path = local_router.find_path(
             (request.origin.lat, request.origin.lng),
             (request.destination.lat, request.destination.lng),
+            also_blocked=_blocked_edges(request) or None,
         )
         if not path:
             return self._fallback_route(request)

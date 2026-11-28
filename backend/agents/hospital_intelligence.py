@@ -739,13 +739,18 @@ class HospitalIntelligenceAgent:
         if travel_weight <= 0:
             return shortlist
 
+        reachable: list[HospitalEntry] = []
+        unreachable: list[HospitalEntry] = []
         for entry in shortlist:
             path = local_router.find_path(
                 (origin.lat, origin.lng),
                 (entry.location.lat, entry.location.lng),
             )
             if not path:
+                # No road there: keep it only after every hospital a vehicle can reach.
+                unreachable.append(entry)
                 continue
+            reachable.append(entry)
 
             road_time_s = path["travel_time_s"]
             new_travel_score = max(
@@ -770,8 +775,8 @@ class HospitalIntelligenceAgent:
                 f"{road_time_s / 60:.1f} min via {', '.join(path['roads'][:2])}."
             )
 
-        shortlist.sort(key=lambda e: e.score, reverse=True)
-        return shortlist
+        reachable.sort(key=lambda e: e.score, reverse=True)
+        return reachable + unreachable
 
     def _build_reasoning(self, hosp: dict[str, Any], total_score: float, distance_m: float,
                          emergency_type: str, breakdown: list[ScoreBreakdown]) -> str:

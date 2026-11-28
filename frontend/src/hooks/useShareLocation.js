@@ -74,11 +74,20 @@ export default function useShareLocation(unitId, enabled) {
             // Every fix looks minutes old: the phone's clock is wrong, and
             // the server will not use its positions until it is fixed.
             setState({ status: 'error', accuracy, error: "This phone's clock is wrong, so its location is not used. Set date and time to automatic." });
+          } else if (data.ignored) {
+            setState({ status: 'error', accuracy, error: 'This reading is older than the last one the server kept.' });
           } else {
             setState({ status: 'sharing', accuracy, error: null });
           }
         }
-        else if (res.status !== 429) {
+        else if (res.status === 429) {
+          setState((prev) => (
+            prev.status === 'sharing'
+              ? prev
+              : { status: 'error', accuracy, error: 'The server is not taking position updates right now.' }
+          ));
+        }
+        else {
           const data = await res.json().catch(() => ({}));
           setState({ status: 'error', accuracy, error: data.detail || `Position not accepted (HTTP ${res.status})` });
         }
