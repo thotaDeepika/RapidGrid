@@ -392,6 +392,18 @@
   pointer-events: none;
 }
 
+/* The icon box is empty space. Only the van and its status dot take clicks,
+   so a patient or hospital pin beside the vehicle stays reachable. */
+.leaflet-marker-icon.rg-pin:has(.rg-ambulance),
+.rg-ambulance-body {
+  pointer-events: none;
+}
+.rg-ambulance-body path,
+.rg-ambulance-body rect,
+.rg-unit-state {
+  pointer-events: auto;
+}
+
 @keyframes rg-ping {
   0%   { transform: scale(0.6); opacity: 0.85; }
   100% { transform: scale(1.45); opacity: 0; }

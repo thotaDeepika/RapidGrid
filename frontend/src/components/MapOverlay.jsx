@@ -425,7 +425,7 @@ export default function MapOverlay({
 
     const pin = (point, kind, label, content) => {
       if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return;
-      L.marker([point.lat, point.lng], { icon: marker(kind, label) })
+      L.marker([point.lat, point.lng], { icon: marker(kind, label), zIndexOffset: 700 })
         .bindPopup(content)
         .addTo(group);
       bounds.push([point.lat, point.lng]);
@@ -522,7 +522,7 @@ export default function MapOverlay({
         ? (fresh ? 'live GPS' : 'GPS, no recent fix')
         : pos.source === 'simulated' ? 'simulated' : 'at station';
       const face = ambulance
-        ? `<span class="rg-ambulance-shadow"></span>${ambulanceSvg(size, pos.heading)}<span style="position:absolute;right:0;bottom:0;width:9px;height:9px;border-radius:50%;background:${fill};border:1.5px solid #fff"></span>`
+        ? `<span class="rg-ambulance-shadow"></span>${ambulanceSvg(size, pos.heading)}<span class="rg-unit-state" style="position:absolute;right:0;bottom:0;width:9px;height:9px;border-radius:50%;background:${fill};border:1.5px solid #fff"></span>`
         : (TYPE_LETTER[u.type] ?? '');
       const icon = L.divIcon({
         className: 'rg-pin',
