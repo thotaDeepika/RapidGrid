@@ -132,6 +132,8 @@ export default function Login() {
   // off; while loading, or if the check failed, they stay closed.
   const [directoryState, setDirectoryState] = useState('loading'); // loading | ready | error
   const [needsPin, setNeedsPin] = useState(null); // { role, subject, profile, label }
+  const [unitSearch, setUnitSearch] = useState('');
+  const [hospSearch, setHospSearch] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -334,44 +336,77 @@ export default function Login() {
               {picking === 'driver' && (
                 <>
                   <PanelHead label="Responding unit" />
-                  <OptionList
-                    items={units}
-                    onPick={(u) => enterStaff('unit', u.unitId, u, u.unitId)}
-                    getKey={(u) => u.unitId}
-                    render={(u) => (
-                      <span className="min-w-0">
-                        <span className="flex items-center gap-2">
-                          <span className="font-mono text-[12px] font-bold text-text">
-                            {u.unitId}
+                  <div className="border-b border-rule bg-paper px-4 py-2.5">
+                    <input
+                      type="text"
+                      placeholder="Search unit or station (e.g. Ramaiah, AMB-21, Victoria)..."
+                      value={unitSearch}
+                      onChange={(e) => setUnitSearch(e.target.value)}
+                      className="w-full rounded-sm border border-rule bg-paper-sunk px-3 py-1.5 text-[12.5px] text-text placeholder:text-text-muted focus:border-ink focus:outline-none"
+                    />
+                  </div>
+                  <div className="max-h-[60vh] overflow-y-auto">
+                    <OptionList
+                      items={units.filter((u) => {
+                        if (!unitSearch.trim()) return true;
+                        const q = unitSearch.toLowerCase();
+                        return (
+                          u.unitId.toLowerCase().includes(q) ||
+                          u.vehicleType.toLowerCase().includes(q) ||
+                          u.hubName.toLowerCase().includes(q)
+                        );
+                      })}
+                      onPick={(u) => enterStaff('unit', u.unitId, u, u.unitId)}
+                      getKey={(u) => u.unitId}
+                      render={(u) => (
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-2">
+                            <span className="font-mono text-[12px] font-bold text-text">
+                              {u.unitId}
+                            </span>
+                            <span className="rounded-xs border border-rule px-1.5 py-[3px] t-tag text-text-muted">
+                              {u.vehicleType}
+                            </span>
                           </span>
-                          <span className="rounded-xs border border-rule px-1.5 py-[3px] t-tag text-text-muted">
-                            {u.vehicleType}
-                          </span>
+                          <span className="mt-1 block text-[12px] text-text-muted">{u.hubName}</span>
                         </span>
-                        <span className="mt-1 block text-[12px] text-text-muted">{u.hubName}</span>
-                      </span>
-                    )}
-                  />
+                      )}
+                    />
+                  </div>
                 </>
               )}
 
               {picking === 'hospital' && (
                 <>
                   <PanelHead label="Emergency department" />
-                  <OptionList
-                    items={hospitals}
-                    onPick={(h) => {
-                      if (h.id !== 'all') { enterStaff('hospital', h.id, h, h.name); return; }
-                      // All facilities opens only once the server has said sign-in is off.
-                      if (directoryState === 'ready' && !directory.enabled) enter('hospital', h);
-                    }}
-                    getKey={(h) => h.id}
-                    render={(h) => (
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-semibold text-text">{h.name}</span>
-                      </span>
-                    )}
-                  />
+                  <div className="border-b border-rule bg-paper px-4 py-2.5">
+                    <input
+                      type="text"
+                      placeholder="Search hospital (e.g. Ramaiah, Aster, Manipal)..."
+                      value={hospSearch}
+                      onChange={(e) => setHospSearch(e.target.value)}
+                      className="w-full rounded-sm border border-rule bg-paper-sunk px-3 py-1.5 text-[12.5px] text-text placeholder:text-text-muted focus:border-ink focus:outline-none"
+                    />
+                  </div>
+                  <div className="max-h-[60vh] overflow-y-auto">
+                    <OptionList
+                      items={hospitals.filter((h) => {
+                        if (!hospSearch.trim()) return true;
+                        return h.name.toLowerCase().includes(hospSearch.toLowerCase());
+                      })}
+                      onPick={(h) => {
+                        if (h.id !== 'all') { enterStaff('hospital', h.id, h, h.name); return; }
+                        // All facilities opens only once the server has said sign-in is off.
+                        if (directoryState === 'ready' && !directory.enabled) enter('hospital', h);
+                      }}
+                      getKey={(h) => h.id}
+                      render={(h) => (
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-semibold text-text">{h.name}</span>
+                        </span>
+                      )}
+                    />
+                  </div>
                 </>
               )}
             </Panel>
