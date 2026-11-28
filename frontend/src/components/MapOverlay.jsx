@@ -334,6 +334,12 @@ export default function MapOverlay({
     }
   }, [routeKey]);
 
+  // A fresh [] from the parent is the same map. Rebuilding on identity
+  // alone closed an open popup while the dispatcher list was polling.
+  const routeSig = JSON.stringify([
+    routeCoordinates, phase1Coordinates, origin, hospital, hub,
+    closures, congestion, activePhase, proposals, alertPoint, corridor, focusKey,
+  ]);
   useEffect(() => {
     const group = layers.current;
     group.clearLayers();
@@ -475,7 +481,7 @@ export default function MapOverlay({
         /* bounds can be degenerate while data is still arriving */
       }
     }
-  }, [routeCoordinates, phase1Coordinates, origin, hospital, hub, closures, congestion, activePhase, proposals, alertPoint, corridor, focusKey]);
+  }, [routeSig]);
 
   // The rest of the fleet: small markers on their own layer, redrawn on each
   // fleet poll (not part of the fit, so they never re-zoom the map).
