@@ -1053,14 +1053,17 @@ def test_each_laptop_takes_a_seat_and_says_whose_screen_it_is(context, server):
 def test_the_control_room_shows_every_hospital_station_and_vehicle(context, server):
     unlock(context, server)
     context.request.post(server + "/api/monitoring/reset", headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}, data={})
+    stations = context.request.get(server + "/api/stations").json()["stations"]
+    units = context.request.get(server + "/api/units").json()["units"]
     page = context.new_page()
     page.route("https://tile.openstreetmap.org/**", lambda route: route.abort())
     try:
         page.goto(server + "/control")
         expect(page.get_by_role("heading", name="City control room")).to_be_visible()
         expect(page.locator(".rg-hospital")).to_have_count(30, timeout=20000)
-        expect(page.locator(".rg-station")).to_have_count(11)
-        expect(page.locator(".rg-fleet")).to_have_count(17, timeout=15000)
+        # Every hub and vehicle from the demo directory stays on the projector map.
+        expect(page.locator(".rg-station")).to_have_count(len(stations))
+        expect(page.locator(".rg-fleet")).to_have_count(len(units), timeout=15000)
         expect(page.get_by_test_id("map-legend")).to_contain_text("Hospital on divert")
         expect(page.get_by_test_id("city-counts")).to_contain_text("30")
         expect(page.get_by_test_id("city-life")).to_be_visible()

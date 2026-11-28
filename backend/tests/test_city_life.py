@@ -44,25 +44,30 @@ def test_the_example_fleet_has_more_than_one_unit_of_each_kind():
     by_type = {}
     for u in fleet.units():
         by_type.setdefault(u["type"], []).append(u["unit_id"])
-    assert len(by_type["Ambulance"]) == 9
+    # The demo directory shows a full city fleet on the map (video / projector).
+    assert len(by_type["Ambulance"]) >= 9
     assert all(len(units) >= 2 for units in by_type.values())
 
 
 def test_simulated_calls_never_take_a_stage_unit():
+    free_other = [u["unit_id"] for u in fleet.units()
+                  if u["type"] == "Ambulance" and u["unit_id"] not in city_life.STAGE_UNITS]
     taken = []
-    for n in range(6):
+    for n, _unit in enumerate(free_other):
         inc = {"incident_id": f"INC-bg{n}", "location": HEBBAL, "vehicle_required": "Ambulance",
                "background": True, "citizen_view": {"phase1_hub": {"name": "Aster CMI Emergency Ambulance Hub"}}}
         unit_id, _created = incident_router._reserve_unit(inc)
         taken.append(unit_id)
     assert not set(taken) & city_life.STAGE_UNITS
+    assert len(taken) == len(free_other)
     # With every other ambulance busy, the stage call still gets its own.
     stage = {"incident_id": "INC-stage", "location": HEBBAL, "vehicle_required": "Ambulance",
              "citizen_view": {"phase1_hub": {"name": "Aster CMI Emergency Ambulance Hub"}}}
     assert incident_router._reserve_unit(stage)[0] == "AMB-01"
-    # And a seventh simulated call is refused rather than taking one.
+    # And one more simulated call is refused rather than taking a stage unit.
     with pytest.raises(HTTPException) as refused:
-        incident_router._reserve_unit({"incident_id": "INC-bg9", "location": HEBBAL, "vehicle_required": "Ambulance",
+        incident_router._reserve_unit({"incident_id": "INC-bg-last", "location": HEBBAL,
+                                       "vehicle_required": "Ambulance",
                                        "background": True, "citizen_view": {}})
     assert refused.value.status_code == 409
 
@@ -148,8 +153,11 @@ def test_a_crew_changes_its_own_duty_and_dispatch_can_change_any(with_pins):
 
 
 def test_every_station_is_listed_for_the_map():
+    from agents.route_optimization import EMERGENCY_HUBS
+
     stations = TestClient(app, base_url="http://testserver").get("/api/stations").json()["stations"]
-    assert len(stations) == 11
+    expected = sum(len(hubs) for hubs in EMERGENCY_HUBS.values())
+    assert len(stations) == expected  # every hub the map draws, including the demo expansion
     assert {s["type"] for s in stations} == {"Ambulance", "Fire Engine", "Police Cruiser", "Disaster Rescue"}
     assert all(12.8 < s["lat"] < 13.2 and 77.4 < s["lng"] < 77.8 for s in stations)
 

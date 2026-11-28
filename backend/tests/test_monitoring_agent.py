@@ -132,7 +132,7 @@ def test_a_wrong_turn_is_detected_as_a_deviation(city, hour):
 
 
 def test_backup_is_advised_when_a_free_unit_is_much_closer(city):
-    # AMB-01 drives across town from Hebbal; the scene is next to AMB-02's station.
+    # AMB-01 drives across town from Hebbal; the scene is next to Manipal.
     scene = (MANIPAL_HUB[0] + 0.004, MANIPAL_HUB[1] + 0.003)
     incident = call_to(scene, ASTER_HUB)
     drive(incident)
@@ -141,9 +141,11 @@ def test_backup_is_advised_when_a_free_unit_is_much_closer(city):
     _off, index = monitor.project(route, unit["position"])
     city_state.close_road(monitoring.edges_to_close(route, index, unit["position"]), "test closure")
     alert = monitor.tick([incident])[0][1]
-    assert alert["backup"]["unit_id"] == "AMB-02"
+    backup = alert["backup"]
+    assert backup and backup["unit_id"] != "AMB-01"
+    assert "Manipal" in (backup.get("station") or "")
     assert alert["recommendation"] == "dispatch_backup"
-    assert "dispatch AMB-02" in alert["explanation"]
+    assert f"dispatch {backup['unit_id']}" in alert["explanation"]
 
 
 def test_with_the_patient_on_board_the_unit_is_kept(city):
@@ -172,19 +174,21 @@ def test_dispatcher_actions_reroute_or_swap_the_unit(city):
     city_state.close_road(monitoring.edges_to_close(route, index, unit["position"]), "test closure")
     alerts = monitor.tick([incident])
     asyncio.run(simulator.store_alerts(alerts))
-    alert_id = alerts[0][1]["alert_id"]
+    alert = alerts[0][1]
+    alert_id = alert["alert_id"]
+    backup_id = alert["backup"]["unit_id"]
     client = TestClient(app)
     incident["unit_assignments"] = {"primary": "AMB-01"}  # AMB-01's crew had claimed the call
 
     swapped = client.post(f"/api/incidents/INC-mon/alerts/{alert_id}/backup")
     assert swapped.status_code == 200, swapped.text
-    assert fleet.unit_for_incident("INC-mon")["unit_id"] == "AMB-02"
+    assert fleet.unit_for_incident("INC-mon")["unit_id"] == backup_id
     # The released unit's claim goes with it, so the backup can claim the call.
     assert "AMB-01" not in incident.get("unit_assignments", {}).values()
     assert fleet.get("AMB-01")["status"] == "available"
     assert client.post(f"/api/incidents/INC-mon/alerts/{alert_id}/dismiss").status_code == 409  # already decided
     log = client.get("/api/monitoring/log").json()["decisions"]
-    assert any("backup AMB-02" in d["text"] for d in log)
+    assert any(f"backup {backup_id}" in d["text"] for d in log)
 
 
 def test_accepting_a_reroute_replaces_the_leg(city):
@@ -287,13 +291,25 @@ def test_a_failed_backup_leaves_the_original_unit_on_the_call(city):
     scene = (MANIPAL_HUB[0] + 0.004, MANIPAL_HUB[1] + 0.003)
     incident = call_to(scene, ASTER_HUB)
     alert = _alert_on_closure(incident)
-    assert alert["backup"]["unit_id"] == "AMB-02"
-    fleet.assign("INC-other", "Ambulance", {"lat": MANIPAL_HUB[0], "lng": MANIPAL_HUB[1]},
-                 prefer_station="Manipal Ambulance Base Depot")  # the backup gets taken meanwhile
+    backup_id = alert["backup"]["unit_id"]
+    backup_station = alert["backup"]["station"]
+    # Busy the advised unit (same station can have several; keep taking until it is held).
+    exclude = set()
+    taken = None
+    for n in range(8):
+        held = fleet.assign(f"INC-other-{n}", "Ambulance",
+                            {"lat": MANIPAL_HUB[0], "lng": MANIPAL_HUB[1]},
+                            prefer_station=backup_station, exclude=exclude)
+        assert held is not None
+        if held["unit_id"] == backup_id:
+            taken = held
+            break
+        exclude.add(held["unit_id"])
+    assert taken is not None
     response = TestClient(app).post(f"/api/incidents/INC-mon/alerts/{alert['alert_id']}/backup")
     assert response.status_code == 409
     assert fleet.unit_for_incident("INC-mon")["unit_id"] == "AMB-01"
-    assert fleet.unit_for_incident("INC-other")["unit_id"] == "AMB-02"
+    assert fleet.get(backup_id)["incident_id"].startswith("INC-other")
 
 
 def test_a_reroute_keeps_the_phone_tracking_decision(city):

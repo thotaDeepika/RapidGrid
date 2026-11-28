@@ -271,6 +271,8 @@ async def get_admitted_cases(hospital_id: str, response: Response, name: str | N
             if hospital_id != "all" and assigned_key != key:
                 continue
             medical_unit = "primary" if (incident.get("vehicle_required") or "Ambulance") in {"Ambulance", "Medical"} else "ambulance"
+            # Same board rule as incoming: registered flag only, never
+            # the caller's name or phone on a shared ER list.
             admits.append({
                 "incident_id": incident["incident_id"],
                 "status": "admitted",
@@ -280,8 +282,6 @@ async def get_admitted_cases(hospital_id: str, response: Response, name: str | N
                 "admitted_timestamp": incident.get("admitted_timestamp"),
                 "patient_summary": incident.get("citizen_text") or incident.get("details") or "No patient description provided",
                 "clinical_classification": incident.get("details"),
-                "caller_name": incident.get("citizen_name"),
-                "caller_phone": incident.get("citizen_phone"),
                 "registered": bool(incident.get("citizen_id")),
                 "assigned_driver": (incident.get("unit_assignments") or {}).get(medical_unit) or (incident.get("assigned_driver") if medical_unit == "primary" else None),
             })
