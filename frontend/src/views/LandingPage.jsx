@@ -64,7 +64,7 @@ const PORTALS = [
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-field text-text">
+    <div className="min-h-screen text-text">
       <header className="fixed inset-x-0 top-0 z-50 border-b border-rule-ink bg-ink">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:h-16 sm:px-6">
           <Link to="/" className="flex min-w-0 items-center gap-3">
@@ -210,6 +210,28 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section className="border-y border-rule-ink bg-ink py-8 sm:py-10">
+          <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 sm:px-6">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <div className="font-display text-[11px] font-bold uppercase tracking-[0.14em] text-signal">
+                  On the street
+                </div>
+                <h2 className="mt-1 font-display text-[clamp(24px,3.5vw,32px)] font-bold text-on-ink">
+                  The ambulance follows the road
+                </h2>
+              </div>
+              <p className="max-w-sm text-[13px] leading-relaxed text-on-ink-muted">
+                On the live map the vehicle is the marker. It glides along the planned streets and turns to face the road it is on.
+              </p>
+            </div>
+            <Frame
+              src="/art/street-move.jpg"
+              alt="A top-down city grid with an amber route and an ambulance on the street"
+            />
+          </div>
+        </section>
+
         <section className="border-y border-rule bg-paper py-8 sm:py-12">
           <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 sm:px-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -299,6 +321,18 @@ export default function LandingPage() {
           <h2 className="mt-1 font-display text-[clamp(24px,3.5vw,32px)] font-bold">
             Built for high-stakes dispatch
           </h2>
+
+          <div className="mt-6 grid grid-cols-1 items-center gap-4 md:grid-cols-2">
+            <Frame
+              src="/art/agent-watch.jpg"
+              alt="A dispatch console with a map, an amber route, and a small ambulance"
+              ratio="aspect-[4/3]"
+            />
+            <p className="text-[15px] leading-relaxed text-text-muted sm:text-[16px]">
+              The console keeps the unit, the route, and the reason for a change on one desk.
+              What moves on the map is the same call the dispatcher just approved.
+            </p>
+          </div>
 
           <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
             {[

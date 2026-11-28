@@ -6,7 +6,8 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Building2, Siren, Truck } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Activity, Building2, Home, Siren, Truck } from 'lucide-react';
 import MapOverlay from '../components/MapOverlay';
 import ControlRoomLog from '../components/ControlRoomLog';
 import { Panel, PanelHead, StatusTag } from '../components/ui';
@@ -152,6 +153,13 @@ export default function ControlRoom() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2" data-testid="city-counts">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 rounded-sm border border-signal bg-signal px-3 py-2 font-display text-[13px] font-bold text-ink"
+          >
+            <Home size={15} aria-hidden />
+            Home
+          </Link>
           <Count Icon={Siren} label="Live emergencies" value={active.length} />
           <Count Icon={Truck} label="Vehicles on calls" value={onCall} />
           <Count Icon={Truck} label="Free" value={free} />
