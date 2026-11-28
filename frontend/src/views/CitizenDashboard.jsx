@@ -668,8 +668,8 @@ export default function CitizenDashboard() {
             </p>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
-            <CallButton phone={unitPhone} label={`Call ambulance (${unitPhone})`} variant="primary" />
-            <CallButton phone={hospitalPhone} label={`Call hospital (${hospitalPhone})`} />
+            <CallButton phone={unitPhone} label="Call ambulance" variant="primary" />
+            <CallButton phone={hospitalPhone} label="Call hospital ER" />
             {dispatchPhone && <CallButton phone={dispatchPhone} label="Call dispatch" />}
             <CallButton phone={hotline} label={callContacts?.hotline_112?.phone ? `Call ${callContacts.hotline_112.name}` : 'Call 112'} />
           </div>
