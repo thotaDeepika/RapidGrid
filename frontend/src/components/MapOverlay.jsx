@@ -90,6 +90,8 @@ function legendControl() {
     row('width:10px;height:10px;border-radius:2px;background:#9a97a0', 'Hospital on divert');
     row('width:9px;height:9px;transform:rotate(45deg);background:#2e2c32', 'Station');
     Object.values(UNIT_STATE).forEach(({ color, label }) => row(`width:10px;height:10px;border-radius:50%;background:${color}`, `Vehicle: ${label.toLowerCase()}`));
+    row('width:14px;height:14px;border-radius:3px;background:#e8a020;color:#1c1c1e;font:700 10px/14px system-ui;text-align:center', 'P patient');
+    row('width:14px;height:14px;border-radius:2px;background:#2e2c32;color:#fff;font:700 10px/14px system-ui;text-align:center', 'D dispatch');
     row('width:10px;height:10px;border-radius:50%;border:2px solid #1d5fd1', 'Live GPS');
     L.DomEvent.disableClickPropagation(box);
     return box;
@@ -100,9 +102,19 @@ function legendControl() {
 function marker(kind, label) {
   return L.divIcon({
     className: '',
-    html: `<div class="rg-marker" style="width:26px;height:26px;background:${COLOR[kind]}">${label}</div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    html: `<div class="rg-marker" style="width:28px;height:28px;background:${COLOR[kind]};font-size:14px">${label}</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
+
+function ambulanceIcon(heading) {
+  const turn = Number.isFinite(heading) ? heading : 0;
+  return L.divIcon({
+    className: '',
+    html: `<div class="rg-marker" title="Ambulance" style="width:40px;height:40px;padding:0;overflow:hidden;border:2px solid #1c1c1e;border-radius:6px;background:#f3efe6;transform:rotate(${turn}deg);transform-origin:50% 50%"><span style="position:absolute;width:1px;height:1px;overflow:hidden">U</span><img src="/art/ambulance-top.jpg" alt="" width="40" height="40" style="display:block;width:40px;height:40px;object-fit:cover"></div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
   });
 }
 
@@ -368,8 +380,8 @@ export default function MapOverlay({
       bounds.push([point.lat, point.lng]);
     };
 
-    pin(hub, 'hub', 'H', popup([hub?.name ?? 'Station hub', 'b'], ['Responding unit base']));
-    pin(origin, 'patient', 'P', popup(['Patient location', 'b']));
+    pin(hub, 'hub', 'D', popup([hub?.name ?? 'Dispatch', 'b'], ['Where dispatch sent the unit from']));
+    pin(origin, 'patient', 'P', popup(['Patient', 'b'], ['Patient location']));
     pin(hospital, 'hospital', 'ER', popup([hospital?.name ?? 'Destination hospital', 'b'], ['Receiving ER']));
 
     // The monitoring agent's proposals: the recommended route (solid green)
@@ -443,7 +455,8 @@ export default function MapOverlay({
         const angle = n * (Math.PI / 3) + Math.PI / 6;
         at = [pos.lat + 0.0014 * Math.cos(angle), pos.lng + 0.0014 * Math.sin(angle)];
       }
-      const size = proposed ? 20 : 16;
+      const ambulance = u.type === 'Ambulance';
+      const size = ambulance ? 28 : (proposed ? 20 : 16);
       const fill = UNIT_STATE[state].color;
       const fresh = gpsFresh(pos);
       const ring = proposed ? `3px solid ${COLOR.proposal}`
@@ -451,10 +464,13 @@ export default function MapOverlay({
       const where = pos.source === 'gps'
         ? (fresh ? 'live GPS' : 'GPS, no recent fix')
         : pos.source === 'simulated' ? 'simulated' : 'at station';
+      const face = ambulance
+        ? `<img src="/art/ambulance-top.jpg" alt="" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;object-fit:cover;transform:rotate(${Number.isFinite(pos.heading) ? pos.heading : 0}deg)">`
+        : (TYPE_LETTER[u.type] ?? '');
       L.marker(at, {
         icon: L.divIcon({
           className: '',
-          html: `<div class="rg-fleet rg-fleet-${state}${proposed ? ' rg-fleet-backup' : ''}" style="width:${size}px;height:${size}px;border-radius:50%;background:${fill};border:${ring};box-shadow:0 0 0 1px rgba(0,0,0,.35);color:#fff;font:700 9px/${size - 3}px system-ui;text-align:center;opacity:${state === 'off' ? 0.7 : 1}">${TYPE_LETTER[u.type] ?? ''}</div>`,
+          html: `<div class="rg-fleet rg-fleet-${state}${proposed ? ' rg-fleet-backup' : ''}" style="width:${size}px;height:${size}px;border-radius:${ambulance ? 5 : 50}%;background:${ambulance ? '#f3efe6' : fill};border:${ring};box-shadow:0 0 0 1px rgba(0,0,0,.35);color:#fff;font:700 9px/${size - 3}px system-ui;text-align:center;overflow:hidden;opacity:${state === 'off' ? 0.7 : 1}">${face}</div>`,
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
         }),
@@ -560,7 +576,7 @@ export default function MapOverlay({
       L.marker([at.lat, at.lng], {
         icon: L.divIcon({
           className: '',
-          html: `<div class="rg-call${waiting ? ' rg-call-waiting' : ''}" style="width:22px;height:22px;border-radius:50%;background:${waiting ? '#c23a2b' : '#e8a020'};color:#fff;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4);font:800 13px/18px system-ui;text-align:center">!</div>`,
+          html: `<div class="rg-call${waiting ? ' rg-call-waiting' : ''}" style="width:22px;height:22px;border-radius:50%;background:${waiting ? '#c23a2b' : '#e8a020'};color:#fff;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.4);font:800 13px/18px system-ui;text-align:center">P</div>`,
           iconSize: [22, 22],
           iconAnchor: [11, 11],
         }),
@@ -608,12 +624,16 @@ export default function MapOverlay({
           : pos.source === 'simulated'
             ? `Simulated GPS${simSpeed ? ` ×${simSpeed}` : ''}`
             : 'At station';
-      const content = popup([unit.unit_id ?? 'Unit', 'b'], [source]);
+      const content = popup([unit.unit_id ?? 'Ambulance', 'b'], [source]);
+      const icon = (unit.type && unit.type !== 'Ambulance')
+        ? marker('unit', TYPE_LETTER[unit.type] ?? 'U')
+        : ambulanceIcon(pos.heading);
       if (unitMarker.current) {
         unitMarker.current.setLatLng([pos.lat, pos.lng]);
+        unitMarker.current.setIcon(icon);
         unitMarker.current.setPopupContent(content);
       } else {
-        unitMarker.current = L.marker([pos.lat, pos.lng], { icon: marker('unit', 'U'), zIndexOffset: 1000 })
+        unitMarker.current = L.marker([pos.lat, pos.lng], { icon, zIndexOffset: 1000 })
           .bindPopup(content)
           .addTo(unitLayer.current);
       }
