@@ -228,10 +228,19 @@ def _sign(*parts: str) -> str:
     return hmac.new(_secret(), ("staff-session:" + ":".join(parts)).encode(), hashlib.sha256).hexdigest()
 
 
+def _pin_tag(role: str, subject: str) -> str:
+    """Binds a session to the PIN that issued it. Replacing that PIN ends it."""
+    if role == "presenter":
+        return ""
+    pin = contacts.staff_pin(role, subject) or ""
+    return hmac.new(_secret(), ("staff-pin-tag:" + role + ":" + subject + ":" + pin).encode(), hashlib.sha256).hexdigest()[:16]
+
+
 def _cookie_value(role: str, subject: str) -> str:
     issued = str(int(time.time()))
     sid = secrets.token_urlsafe(18)
-    return ".".join((issued, sid, role, subject, _sign(issued, sid, role, subject)))
+    tag = _pin_tag(role, subject)
+    return ".".join((issued, sid, role, subject, _sign(issued, sid, role, subject, tag)))
 
 
 def _parse(cookie: str) -> Optional[tuple[str, str, str, float]]:
@@ -252,7 +261,7 @@ def _parse(cookie: str) -> Optional[tuple[str, str, str, float]]:
     age = time.time() - int(issued)
     if not 0 <= age < SESSION_SECONDS:
         return None
-    if not hmac.compare_digest(signature.encode(), _sign(issued, sid, role, subject).encode()):
+    if not hmac.compare_digest(signature.encode(), _sign(issued, sid, role, subject, _pin_tag(role, subject)).encode()):
         return None
     return sid, role, subject, int(issued) + SESSION_SECONDS
 

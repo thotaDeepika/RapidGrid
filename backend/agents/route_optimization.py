@@ -53,6 +53,17 @@ _PROVIDER_FRESHNESS_S = 300.0
 GOOGLE_TIMEOUT_S = 4.0
 
 
+def _blocked_edges(request: RouteRequest) -> set[int]:
+    """Edge ids this request treats as closed, ignoring anything that is not an id."""
+    edges: set[int] = set()
+    for raw in request.blocked_segments or []:
+        try:
+            edges.add(int(str(raw).strip()))
+        except (TypeError, ValueError):
+            continue
+    return edges
+
+
 def _active_interventions() -> int:
     """Closed plus obstructed segments in the city model (0 when it is not loaded)."""
     try:
@@ -188,14 +199,21 @@ class RouteOptimizationAgent:
             return self._local_route(request, reason="no API key configured")
 
         # Google knows real traffic but not the closures and incidents drawn
-        # in our city model. While any are active, route on the graph that
-        # does, so the dispatched route and the hospital ranking agree.
+        # in our city model, nor edges this request marked blocked. While any
+        # are active, route on the graph that does, so the dispatched route
+        # and the hospital ranking agree. A cached Google route is the same
+        # problem: it was computed before these edges were closed.
         interventions = _active_interventions()
-        if interventions:
+        requested = _blocked_edges(request)
+        if interventions or requested:
+            parts = []
+            if interventions:
+                parts.append(f"{interventions} closed or obstructed segment(s) in the city model")
+            if requested:
+                parts.append(f"{len(requested)} segment(s) blocked on this request")
             return self._local_route(
                 request,
-                reason=f"{interventions} closed or obstructed segment(s) in the city model; "
-                "Google Routes does not know about them",
+                reason="; ".join(parts) + "; Google Routes does not know about them",
             )
 
         cache_key = self._cache_key(request)
@@ -320,6 +338,7 @@ class RouteOptimizationAgent:
         path = local_router.find_path(
             (request.origin.lat, request.origin.lng),
             (request.destination.lat, request.destination.lng),
+            also_blocked=_blocked_edges(request) or None,
         )
         if not path:
             return self._fallback_route(request)
@@ -399,7 +418,7 @@ EMERGENCY_HUBS = {
         {"id": "AMB-HUB-12", "name": "Apollo Hospital (Bannerghatta Road) Emergency Ambulance Hub", "lat": 12.896305, "lng": 77.598349},
         {"id": "AMB-HUB-13", "name": "Aster CMI Hospital (Hebbal) Emergency Ambulance Hub", "lat": 13.054532, "lng": 77.591871},
         {"id": "AMB-HUB-14", "name": "Sakra World Hospital (Devarabeesanahalli) Emergency Ambulance Hub", "lat": 12.932315, "lng": 77.685248},
-        {"id": "AMB-HUB-15", "name": "MS Ramaiah Memorial Hospital Emergency Ambulance Hub", "lat": 13.028218, "lng": 77.569775},
+        {"id": "AMB-HUB-15", "name": "MS Ramaiah Memorial Hospital Emergency Ambulance Hub", "lat": 13.028332, "lng": 77.569784},
         {"id": "AMB-HUB-16", "name": "BGS Gleneagles Global Hospital (Kengeri) Emergency Ambulance Hub", "lat": 12.90306, "lng": 77.497498},
         {"id": "AMB-HUB-17", "name": "Vikram Hospital (Millers Road) Emergency Ambulance Hub", "lat": 12.965658, "lng": 77.609722},
         {"id": "AMB-HUB-18", "name": "Bangalore Baptist Hospital (Bellary Road) Emergency Ambulance Hub", "lat": 13.034725, "lng": 77.590171},

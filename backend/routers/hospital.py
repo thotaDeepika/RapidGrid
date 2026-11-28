@@ -94,6 +94,34 @@ async def list_hospitals():
     return {"hospitals": hospitals, "count": len(hospitals)}
 
 
+def _assigned_key(incident: dict) -> str | None:
+    """The hospital this case is actually going to, if one has been chosen."""
+    view = incident.get("citizen_view") or {}
+    recommendation = (incident.get("action_plan") or {}).get("recommended_hospital") or {}
+    assigned_id = incident.get("approved_hospital_id") or recommendation.get("hospital_id")
+    assigned_key = _resolve(str(assigned_id)) if assigned_id else None
+    if assigned_key is None:
+        hospital_name = view.get("hospital_name") or recommendation.get("name")
+        if hospital_name:
+            assigned_key = _resolve(hospital_name)
+    return assigned_key
+
+
+def _medical_arrived(incident: dict) -> bool:
+    medical_unit = "primary" if (incident.get("vehicle_required") or "Ambulance") in {"Ambulance", "Medical"} else "ambulance"
+    return unit_statuses(incident).get(medical_unit) == "arrived" or incident.get("status") == "completed"
+
+
+def _for_this_hospital(hospital_id: str, incident: dict) -> bool:
+    """False when this incident is another facility's patient."""
+    if hospital_id == "all":
+        return True
+    key = _resolve(hospital_id)
+    if key is None:
+        raise HTTPException(status_code=404, detail="Hospital not found")
+    return _assigned_key(incident) == key
+
+
 def _incoming(hospital_id: str) -> list[dict]:
     key = None if hospital_id == "all" else _resolve(hospital_id)
     if hospital_id != "all" and key is None:
@@ -105,17 +133,14 @@ def _incoming(hospital_id: str) -> list[dict]:
         if (incident.get("vehicle_required") or "Ambulance") not in {"Ambulance", "Medical"} and not incident.get("include_ambulance_backup"):
             continue
         medical_unit = "primary" if (incident.get("vehicle_required") or "Ambulance") in {"Ambulance", "Medical"} else "ambulance"
-        unit_arrived = unit_statuses(incident).get(medical_unit) == "arrived" or incident.get("status") == "completed"
+        unit_arrived = _medical_arrived(incident)
         # If admitted into ER, remove from hospital view
         if incident.get("admitted_at_hospital"):
             continue
         view = incident.get("citizen_view") or {}
         recommendation = (incident.get("action_plan") or {}).get("recommended_hospital") or {}
-        assigned_id = incident.get("approved_hospital_id") or recommendation.get("hospital_id")
-        assigned_key = _resolve(str(assigned_id)) if assigned_id else None
+        assigned_key = _assigned_key(incident)
         hospital_name = view.get("hospital_name") or recommendation.get("name")
-        if assigned_key is None and hospital_name:
-            assigned_key = _resolve(hospital_name)
         if hospital_id != "all" and assigned_key != key:
             continue
         incoming.append({
@@ -183,20 +208,24 @@ async def patient_history(hospital_id: str, incident_id: str, request: Request =
         if target is None:
             raise HTTPException(status_code=404, detail="Incident not found")
         
+        if not _for_this_hospital(hospital_id, target):
+            raise HTTPException(status_code=404, detail="Incident not found")
+
         cid = target.get("citizen_id")
         phone = target.get("citizen_phone")
         name = target.get("citizen_name")
 
         matches = []
         for inc in ACTIVE_INCIDENTS:
-            # Match by account ID, or by verified/typed phone number
-            is_match = False
-            if cid and inc.get("citizen_id") == cid:
-                is_match = True
+            # Same account, or the same phone when the accounts do not disagree.
+            # A shared name is not the same person.
+            other_id = inc.get("citizen_id")
+            if cid and other_id:
+                is_match = cid == other_id
             elif phone and phone != "Unregistered" and inc.get("citizen_phone") == phone:
                 is_match = True
-            elif name and name not in {"Anonymous", "Anonymous Citizen"} and inc.get("citizen_name") == name:
-                is_match = True
+            else:
+                is_match = False
 
             if is_match:
                 view = inc.get("citizen_view") or {}
@@ -242,6 +271,8 @@ async def get_admitted_cases(hospital_id: str, response: Response, name: str | N
             if hospital_id != "all" and assigned_key != key:
                 continue
             medical_unit = "primary" if (incident.get("vehicle_required") or "Ambulance") in {"Ambulance", "Medical"} else "ambulance"
+            # Same board rule as incoming: registered flag only, never
+            # the caller's name or phone on a shared ER list.
             admits.append({
                 "incident_id": incident["incident_id"],
                 "status": "admitted",
@@ -251,8 +282,6 @@ async def get_admitted_cases(hospital_id: str, response: Response, name: str | N
                 "admitted_timestamp": incident.get("admitted_timestamp"),
                 "patient_summary": incident.get("citizen_text") or incident.get("details") or "No patient description provided",
                 "clinical_classification": incident.get("details"),
-                "caller_name": incident.get("citizen_name"),
-                "caller_phone": incident.get("citizen_phone"),
                 "registered": bool(incident.get("citizen_id")),
                 "assigned_driver": (incident.get("unit_assignments") or {}).get(medical_unit) or (incident.get("assigned_driver") if medical_unit == "primary" else None),
             })
@@ -268,6 +297,10 @@ async def admit_patient(hospital_id: str, incident_id: str, request: Request = N
     async with _INCIDENTS_LOCK:
         for inc in ACTIVE_INCIDENTS:
             if inc["incident_id"] == incident_id:
+                if not _for_this_hospital(hospital_id, inc):
+                    break
+                if not _medical_arrived(inc):
+                    raise HTTPException(status_code=409, detail="The patient has not arrived")
                 inc["admitted_at_hospital"] = True
                 inc["admitted_timestamp"] = __import__("time").time()
                 await commit(inc)

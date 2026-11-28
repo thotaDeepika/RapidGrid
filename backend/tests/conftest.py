@@ -40,6 +40,8 @@ def _example_contacts(monkeypatch):
     monkeypatch.delenv("RAPIDGRID_CONTACTS", raising=False)
     monkeypatch.setenv("RAPIDGRID_CONTACTS_FILE",
                        str(Path(contacts.__file__).with_name("contacts.example.json")))
+    # Custom test directories must stay exact; do not merge the showcase fleet.
+    monkeypatch.setenv("RAPIDGRID_EXPAND_DEMO_FLEET", "0")
     contacts.directory.cache_clear()
     yield
     contacts.directory.cache_clear()

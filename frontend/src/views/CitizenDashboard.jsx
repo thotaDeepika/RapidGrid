@@ -635,10 +635,9 @@ export default function CitizenDashboard() {
   const dispatched = ['dispatched', 'claimed', 'patient_picked_up', 'arrived', 'completed'].includes(
     incident?.status,
   );
-  // Default fallback contact numbers:
-  // Ambulance: 8247042357, Hospital: 7032125015
-  const unitPhone = callContacts?.unit?.phone ?? '8247042357';
-  const hospitalPhone = callContacts?.hospital?.emergency_phone ?? callContacts?.hospital?.icu_phone ?? '7032125015';
+  // Numbers come from the directory for this call; no hardcoded fallbacks.
+  const unitPhone = callContacts?.unit?.phone ?? null;
+  const hospitalPhone = callContacts?.hospital?.emergency_phone ?? callContacts?.hospital?.icu_phone ?? null;
   const dispatchPhone = callContacts?.dispatch?.phone ?? null;
   // Before the directory answers, 112 works anywhere in India; if the
   // directory says there is no hotline (null), no button is shown.

@@ -52,6 +52,25 @@ def test_with_a_closure_drawn_the_dispatched_route_avoids_it_without_calling_goo
     assert route.eta > before["travel_time_s"]
 
 
+def test_a_request_blocks_edges_without_calling_google(city):
+    agent = RouteOptimizationAgent()
+    agent.api_key = "configured"
+    before = local_router.find_path(HEBBAL, JAYADEVA)
+    bellary = [e for e in before["edge_ids"]
+               if "Bellary" in local_router.road_names[local_router.edge_name[e]]]
+    assert bellary, "the test route should use Bellary Road"
+    blocked = RouteRequest(
+        origin=Coordinate(lat=HEBBAL[0], lng=HEBBAL[1]),
+        destination=Coordinate(lat=JAYADEVA[0], lng=JAYADEVA[1]),
+        blocked_segments=[str(e) for e in bellary],
+    )
+    with patch.object(ro.httpx, "Client") as google:
+        route = agent.compute_route(blocked)
+        google.assert_not_called()
+    assert route.data_freshness == DataFreshness.CACHED
+    assert not set(int(e) for e in route.edge_ids) & set(bellary)
+
+
 def test_without_interventions_google_is_still_used(city):
     agent = RouteOptimizationAgent()
     agent.api_key = "configured"

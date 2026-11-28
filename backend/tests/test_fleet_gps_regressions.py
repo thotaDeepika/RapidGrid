@@ -23,6 +23,17 @@ def restart():
     fleet.load()
 
 
+def test_an_idle_gps_fix_survives_a_restart():
+    fleet.load()
+    fleet.reset()
+    now = time.time()
+    fleet.record_position("AMB-01", 13.0400, 77.5950, source="gps", accuracy_m=8, at=now + 100, captured_at=now + 100)
+    restart()
+    unit = fleet.get("AMB-01")
+    assert (unit["position"]["lat"], unit["position"]["lng"], unit["position"]["source"]) == (13.0400, 77.5950, "gps")
+    assert unit["incident_id"] is None and not fleet.real_vehicle(unit)
+
+
 def test_the_last_real_place_survives_the_end_of_the_call_and_a_restart():
     now = time.time()
     fleet.assign("INC-1", "Ambulance", HEBBAL, prefer_station=STATION)

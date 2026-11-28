@@ -532,7 +532,8 @@ def corridor(route: dict, limit: int = 6) -> list[dict]:
 def best_backup(unit: dict, destination: dict) -> Optional[dict]:
     """The nearest free unit of the same type and its route time to the destination."""
     free = [u for u in fleet.units()
-            if u["type"] == unit["type"] and u["status"] == "available" and u["unit_id"] != unit["unit_id"]]
+            if u["type"] == unit["type"] and u["status"] == "available" and u.get("on_duty", True)
+            and u["unit_id"] != unit["unit_id"]]
     free.sort(key=lambda u: _dist(u["position"], destination))
     best = None
     for candidate in free[:3]:
@@ -845,18 +846,30 @@ def tick(incidents: list[dict]) -> list[tuple[str, dict]]:
     Returns (incident_id, alert) pairs for new alerts; the caller stores them.
     Pure computation, safe to run off the event loop.
     """
-    from agents.simulator import fleet_leg
+    from agents.simulator import _backup_units, _leg, fleet_leg
 
     new_alerts: list[tuple[str, dict]] = []
     by_id = {i["incident_id"]: i for i in incidents}
     version = _city_version()
+    jobs: list[tuple] = []
+    backup_ids: set[str] = set()
+    for incident in incidents:
+        # A backup ambulance is not the fleet assignment, but it drives the
+        # hospital leg. Watch that leg the same way as a dispatched unit.
+        for unit in _backup_units(incident):
+            backup_ids.add(unit["unit_id"])
+            leg, route, eta_s = _leg(incident)
+            jobs.append((unit, incident, leg, route, eta_s))
     for unit in fleet.units():
         incident = by_id.get(unit.get("incident_id") or "")
         if incident is None:
-            _watches.pop(unit["unit_id"], None)
-            _last_off.pop(unit["unit_id"], None)
+            if unit["unit_id"] not in backup_ids:
+                _watches.pop(unit["unit_id"], None)
+                _last_off.pop(unit["unit_id"], None)
             continue
         leg, route, eta_s = fleet_leg(incident)
+        jobs.append((unit, incident, leg, route, eta_s))
+    for unit, incident, leg, route, eta_s in jobs:
         if leg is None or len(route) < 2:
             continue
         watch = _watches.setdefault(unit["unit_id"], Watch())

@@ -763,12 +763,21 @@ def test_official_scenario_route_blocked_ahead_is_explained_and_rerouted(context
     trace.locator("summary").click()
     for step in ("Observe", "Detect", "Explain", "Predict", "Options", "Advise"):
         expect(trace).to_contain_text(step)
-    page.get_by_role("button", name="Accept recommended route").click()
-    expect(page.get_by_text("Rerouted", exact=False).first).to_be_visible(timeout=10000)
-    # The decision shows in the control-room log and in the incident channel.
-    expect(page.get_by_text("Dispatcher accepted the recommended route", exact=False).first).to_be_visible(timeout=10000)
-    expect(page.get_by_role("log", name="Incident messages")).to_contain_text(
-        "Dispatcher accepted the recommended route", timeout=10000)
+    # With the full demo fleet a closer backup may win; follow whichever
+    # action the agent put first (reroute or send backup).
+    accept = page.get_by_role("button", name="Accept recommended route")
+    send = page.get_by_role("button", name=re.compile(r"^Send AMB-"))
+    if send.count() and "dispatch" in (alert.inner_text() or "").lower():
+        send.first.click()
+        expect(page.get_by_text("dispatched", exact=False).first).to_be_visible(timeout=10000)
+        expect(page.get_by_text("released", exact=False).first).to_be_visible(timeout=10000)
+    else:
+        accept.click()
+        expect(page.get_by_text("Rerouted", exact=False).first).to_be_visible(timeout=10000)
+        # The decision shows in the control-room log and in the incident channel.
+        expect(page.get_by_text("Dispatcher accepted the recommended route", exact=False).first).to_be_visible(timeout=10000)
+        expect(page.get_by_role("log", name="Incident messages")).to_contain_text(
+            "Dispatcher accepted the recommended route", timeout=10000)
     context.request.post(server + "/api/city/clear", headers={"Authorization": f"Bearer {ACCESS_TOKEN}"})
     context.request.post(server + "/api/incidents/clear", headers={"Authorization": f"Bearer {ACCESS_TOKEN}"})
 
@@ -1053,14 +1062,17 @@ def test_each_laptop_takes_a_seat_and_says_whose_screen_it_is(context, server):
 def test_the_control_room_shows_every_hospital_station_and_vehicle(context, server):
     unlock(context, server)
     context.request.post(server + "/api/monitoring/reset", headers={"Authorization": f"Bearer {ACCESS_TOKEN}"}, data={})
+    stations = context.request.get(server + "/api/stations").json()["stations"]
+    units = context.request.get(server + "/api/units").json()["units"]
     page = context.new_page()
     page.route("https://tile.openstreetmap.org/**", lambda route: route.abort())
     try:
         page.goto(server + "/control")
         expect(page.get_by_role("heading", name="City control room")).to_be_visible()
         expect(page.locator(".rg-hospital")).to_have_count(30, timeout=20000)
-        expect(page.locator(".rg-station")).to_have_count(11)
-        expect(page.locator(".rg-fleet")).to_have_count(17, timeout=15000)
+        # Every hub and vehicle from the demo directory stays on the projector map.
+        expect(page.locator(".rg-station")).to_have_count(len(stations))
+        expect(page.locator(".rg-fleet")).to_have_count(len(units), timeout=15000)
         expect(page.get_by_test_id("map-legend")).to_contain_text("Hospital on divert")
         expect(page.get_by_test_id("city-counts")).to_contain_text("30")
         expect(page.get_by_test_id("city-life")).to_be_visible()
