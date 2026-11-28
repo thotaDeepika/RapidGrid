@@ -280,6 +280,15 @@ def test_demo_api_refuses_unknown_hosts(monkeypatch):
     assert local.get("/health/live", headers=rebinding).status_code == 200
 
 
+def test_the_render_url_and_the_custom_domain_both_reach_the_demo(monkeypatch):
+    monkeypatch.setenv("RAPIDGRID_MODE", "demo")
+    monkeypatch.delenv("RENDER_EXTERNAL_HOSTNAME", raising=False)
+    monkeypatch.setenv("RAPIDGRID_ALLOWED_HOSTS", "testserver")
+    local = TestClient(app, base_url="http://testserver")
+    for host in ("rapidgrid.onrender.com", "rapidgrid.highcortisol.xyz"):
+        assert local.get("/api/incidents/", headers={"Host": host}).status_code == 200, host
+
+
 def test_demo_hosts_can_be_extended(monkeypatch):
     monkeypatch.setenv("RAPIDGRID_MODE", "demo")
     monkeypatch.setenv("RAPIDGRID_ALLOWED_HOSTS", "testserver, demo.lan")
