@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect } from 'react';
 import shortId from '../utils/shortId';
-import { Check, ChevronLeft, Building2 } from 'lucide-react';
+import { Check, ChevronLeft, Building2, MapPin, Navigation } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import MapOverlay from '../components/MapOverlay';
 import { useHospitals, useStations, useOsmHospitals } from '../hooks/useCityLayers';
@@ -47,6 +47,8 @@ export default function DriverDashboard() {
     return () => { cancelled = true; };
   }, [driverInfo?.unitId]);
   const [dutyPending, setDutyPending] = useState(false);
+  const [hubSearch, setHubSearch] = useState('');
+  const [showHubsList, setShowHubsList] = useState(false);
   const changeDuty = async (on) => {
     if (dutyPending) return;
     setDutyError(null);
@@ -271,6 +273,73 @@ export default function DriverDashboard() {
         </div>
 
         {sharePanel}
+
+        {/* Emergency Stations and Hospital Hubs */}
+        <Panel className="overflow-hidden">
+          <PanelHead
+            label={`Emergency Hubs & Stations (${stations.length})`}
+            right={
+              <button
+                type="button"
+                onClick={() => setShowHubsList((p) => !p)}
+                className="tap inline-flex items-center gap-1 text-[12px] font-semibold text-signal-hover hover:underline"
+              >
+                <Navigation size={13} />
+                {showHubsList ? 'Collapse hubs' : 'View all hubs'}
+              </button>
+            }
+          />
+          <div className="p-3">
+            <input
+              type="text"
+              placeholder="Search hubs near hospitals (e.g. Ramaiah, Aster, Manipal, Victoria)..."
+              value={hubSearch}
+              onChange={(e) => {
+                setHubSearch(e.target.value);
+                if (!showHubsList) setShowHubsList(true);
+              }}
+              className="w-full rounded-sm border border-rule bg-paper-sunk px-3 py-1.5 text-[12.5px] text-text placeholder:text-text-muted focus:border-ink focus:outline-none"
+            />
+          </div>
+          {showHubsList && (
+            <div className="max-h-[300px] divide-y divide-rule overflow-y-auto border-t border-rule bg-paper">
+              {stations
+                .filter((st) => {
+                  if (!hubSearch.trim()) return true;
+                  const q = hubSearch.toLowerCase();
+                  return st.name.toLowerCase().includes(q) || (st.type && st.type.toLowerCase().includes(q));
+                })
+                .map((st) => {
+                  const isCurrent = driverInfo?.hubName === st.name;
+                  return (
+                    <div
+                      key={st.id}
+                      className={`flex items-start justify-between gap-3 px-3.5 py-2.5 transition-colors ${
+                        isCurrent ? 'bg-signal-wash' : 'hover:bg-paper-hover'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <MapPin size={13} className={isCurrent ? 'text-signal-hover' : 'text-text-muted'} />
+                          <span className="text-[13px] font-semibold text-text">{st.name}</span>
+                          {isCurrent && (
+                            <span className="rounded-xs border border-signal bg-signal/10 px-1.5 py-0.5 text-[10.5px] font-bold text-signal-hover">
+                              YOUR BASE
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-2 t-meta text-text-faint pl-5">
+                          <span>{st.type ?? 'Ambulance Hub'}</span>
+                          <span>·</span>
+                          <span className="font-mono text-[11px]">{st.lat.toFixed(4)}°N, {st.lng.toFixed(4)}°E</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </Panel>
 
         {dispatches.length === 0 ? (
           <Panel>
