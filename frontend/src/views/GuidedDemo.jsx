@@ -56,7 +56,9 @@ const incident = (id) => api(`/api/incidents/${encodeURIComponent(id)}`);
 
 /** One staff session is one role, so the tour only runs when PINs are off. */
 async function canRunAllRoles() {
-  const staff = await api('/api/staff/session').catch(() => ({}));
+  // A failed check must stay a failed check. Swallowing it made a timeout
+  // look like staff PINs were on.
+  const staff = await api('/api/staff/session');
   return staff.enabled === false;
 }
 
