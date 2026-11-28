@@ -205,6 +205,18 @@ def test_a_hospital_sign_in_matches_its_own_name_or_id(with_pins):
                           json={"beds_available": 2}).status_code == 200
 
 
+def test_replacing_a_staff_pin_ends_the_old_session(with_pins, monkeypatch):
+    dispatcher = fresh()
+    assert sign_in(dispatcher, "dispatcher", "dispatch", "111111").status_code == 200
+    assert dispatcher.post("/api/city/conditions", json={"hour": 9}).status_code == 200
+    changed = json.loads(json.dumps(DIRECTORY))
+    changed["dispatch"]["staff_pin"] = "121212"
+    monkeypatch.setenv("RAPIDGRID_CONTACTS", json.dumps(changed))
+    contacts.reload()
+    assert dispatcher.post("/api/city/conditions", json={"hour": 9}).status_code == 401
+    assert sign_in(fresh(), "dispatcher", "dispatch", "121212").status_code == 200
+
+
 def test_a_unit_cannot_act_for_another_unit_through_the_body(with_pins):
     unit = fresh()
     sign_in(unit, "unit", "AMB-01", "222222")

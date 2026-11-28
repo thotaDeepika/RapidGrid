@@ -81,6 +81,8 @@ def _require_driver(incident: dict, driver_id: str, unit_type: str) -> None:
         unit = fleet.get(driver_id)
         if unit is None or unit.get("type") != "Ambulance":
             raise HTTPException(status_code=403, detail="Only an ambulance can take the backup slot")
+        if unit.get("on_duty", True) is False:
+            raise HTTPException(status_code=409, detail="This ambulance is off duty")
         if unit.get("incident_id") not in (None, "", incident["incident_id"]):
             raise HTTPException(status_code=409, detail="This ambulance is on another call")
         # A backup claim is not in the fleet record: check the other calls.

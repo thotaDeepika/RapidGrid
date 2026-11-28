@@ -532,7 +532,8 @@ def corridor(route: dict, limit: int = 6) -> list[dict]:
 def best_backup(unit: dict, destination: dict) -> Optional[dict]:
     """The nearest free unit of the same type and its route time to the destination."""
     free = [u for u in fleet.units()
-            if u["type"] == unit["type"] and u["status"] == "available" and u["unit_id"] != unit["unit_id"]]
+            if u["type"] == unit["type"] and u["status"] == "available" and u.get("on_duty", True)
+            and u["unit_id"] != unit["unit_id"]]
     free.sort(key=lambda u: _dist(u["position"], destination))
     best = None
     for candidate in free[:3]:

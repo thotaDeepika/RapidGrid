@@ -54,6 +54,7 @@ export default function HospitalDashboard() {
   const [admittedList, setAdmittedList] = useState([]);
   const [patientHistoryModal, setPatientHistoryModal] = useState(null); // incident or null
   const [patientHistoryData, setPatientHistoryData] = useState(null);
+  const [historyError, setHistoryError] = useState('');
   const [loadingPatientHistory, setLoadingPatientHistory] = useState(false);
   const [conn, setConn] = useState('ok');
 
@@ -103,15 +104,18 @@ export default function HospitalDashboard() {
     setPatientHistoryModal(incident);
     setLoadingPatientHistory(true);
     setPatientHistoryData(null);
+    setHistoryError('');
     try {
       const id = hospitalInfo?.id || 'all';
       const res = await fetch(`/api/hospital/${id}/patient_history/${encodeURIComponent(incident.incident_id)}`);
       if (res.ok) {
         const data = await res.json();
         setPatientHistoryData(data);
+      } else {
+        setHistoryError('The history request failed. Try again.');
       }
     } catch {
-      /* offline */
+      setHistoryError('The history request failed. Try again.');
     } finally {
       setLoadingPatientHistory(false);
     }
@@ -348,7 +352,7 @@ export default function HospitalDashboard() {
                           <div className="flex items-center gap-1.5">
                             <FileText size={13} className="text-text-muted" />
                             <span className="t-meta text-text-faint">
-                              {c.registered ? 'Verified citizen record' : 'Emergency intake record'}
+                              {c.registered ? 'Registered account' : 'Emergency intake record'}
                             </span>
                           </div>
                         </div>
@@ -526,7 +530,7 @@ export default function HospitalDashboard() {
                               <div className="flex items-center gap-1.5">
                                 <FileText size={13} className="text-text-muted" />
                                 <span className="t-meta text-text-faint">
-                                  {c.registered ? 'Verified citizen record' : 'Emergency intake record'}
+                                  {c.registered ? 'Registered account' : 'Emergency intake record'}
                                 </span>
                               </div>
                             </div>
@@ -652,7 +656,7 @@ export default function HospitalDashboard() {
                 </div>
                 <div className="mt-1 flex items-center gap-3 text-[12px] text-text-muted">
                   <span>Phone: <strong className="font-mono text-text">{patientHistoryData?.phone || patientHistoryModal.caller_phone || 'Unregistered'}</strong></span>
-                  <span>Record: <strong className="text-text">{patientHistoryData?.registered ? 'Verified citizen account' : 'Emergency intake record'}</strong></span>
+                  <span>Record: <strong className="text-text">{patientHistoryData?.registered ? 'Registered account' : 'Emergency intake record'}</strong></span>
                 </div>
               </div>
               <button
@@ -668,6 +672,8 @@ export default function HospitalDashboard() {
             <div className="flex-1 overflow-y-auto divide-y divide-rule p-3">
               {loadingPatientHistory ? (
                 <div className="p-8 text-center text-sm text-text-muted">Loading prior emergency records…</div>
+              ) : historyError ? (
+                <div className="p-8 text-center text-sm text-text-muted">{historyError}</div>
               ) : !patientHistoryData?.history?.length ? (
                 <div className="p-8 text-center text-sm text-text-muted">
                   No prior emergency records on file for this patient.

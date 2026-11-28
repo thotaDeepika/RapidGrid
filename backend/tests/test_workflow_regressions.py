@@ -73,6 +73,37 @@ def seed(status="awaiting_dispatcher_approval", **extra):
 
 
 
+def test_a_hospital_only_sees_and_admits_its_own_arrived_patient(client):
+    seed("dispatched", approved_hospital_id="blr-007", citizen_id="citizen-a", citizen_phone="+919800000001")
+    incident.ACTIVE_INCIDENTS.append({
+        "incident_id": "INC-other", "status": "completed",
+        "citizen_id": "citizen-b", "citizen_phone": "+919800000099", "citizen_name": "Demo reviewer",
+        "approved_hospital_id": "blr-001",
+        "action_plan": {"recommended_hospital": {"hospital_id": "blr-001", "name": "Other"}},
+        "citizen_view": {"hospital_name": "Other Hospital"},
+    })
+    assert client.get("/api/hospital/blr-001/patient_history/INC-review").status_code == 404
+    assert client.post("/api/hospital/blr-001/admit/INC-review").status_code == 404
+    history = client.get("/api/hospital/blr-007/patient_history/INC-review").json()
+    assert [row["incident_id"] for row in history["history"]] == ["INC-review"]
+    assert client.post("/api/hospital/blr-007/admit/INC-review").status_code == 409
+    incident.ACTIVE_INCIDENTS[0]["unit_statuses"] = {"primary": "arrived"}
+    assert client.post("/api/hospital/blr-007/admit/INC-review").status_code == 200
+
+
+def test_an_off_duty_ambulance_cannot_claim_a_backup(client, mocked_route):
+    import fleet
+    seed("dispatched", vehicle_required="Fire Engine", include_ambulance_backup=True)
+    fleet.set_duty("AMB-05", False)
+    try:
+        claim = client.post("/api/driver/claim", json={
+            "incident_id": "INC-review", "driver_id": "AMB-05", "unit_type": "ambulance",
+        })
+        assert claim.status_code == 409
+    finally:
+        fleet.set_duty("AMB-05", True)
+
+
 def test_pipeline_exception_cannot_overwrite_dispatcher_rejection(client, monkeypatch):
     import asyncio
 
