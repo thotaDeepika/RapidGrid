@@ -147,6 +147,68 @@ def _raw() -> tuple[str, str, bool]:
     return "{}", "empty", False
 
 
+def _demo_mode() -> bool:
+    default = "operator" if os.getenv("RENDER", "").lower() == "true" else "demo"
+    return os.getenv("RAPIDGRID_MODE", default).lower() == "demo"
+
+
+def _expand_demo_fleet() -> bool:
+    """Fill in showcase hubs (e.g. MS Ramaiah) the map already draws.
+
+    Production often keeps a short contacts file with staff PINs while the
+    code lists every ambulance hub. Without a unit at that hub, dispatch
+    falls back to a far station (Manipal / Aster). In demo mode we merge
+    the missing example units and hospitals so the projector and unit
+    picker match the map. Set RAPIDGRID_EXPAND_DEMO_FLEET=0 to leave the
+    contacts file exactly as written.
+    """
+    flag = os.getenv("RAPIDGRID_EXPAND_DEMO_FLEET", "1").lower()
+    if flag in {"0", "false", "no"}:
+        return False
+    return _demo_mode()
+
+
+def _merge_example_showcase(loaded: Directory) -> Directory:
+    example_path = _HERE / "contacts.example.json"
+    if not example_path.is_file():
+        return loaded
+    try:
+        example = Directory.model_validate(json.loads(example_path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError, ValidationError):
+        logger.warning("Could not read contacts.example.json to expand the demo fleet")
+        return loaded
+    have_units = {u.unit_id for u in loaded.units}
+    have_hospitals = {h.hospital_id for h in loaded.hospitals}
+    donor_unit_pin = next((u.staff_pin for u in loaded.units if u.staff_pin), None)
+    donor_hospital_pin = next((h.staff_pin for h in loaded.hospitals if h.staff_pin), None)
+    extra_units = []
+    for unit in example.units:
+        if unit.unit_id in have_units:
+            continue
+        data = unit.model_dump()
+        # Same staff PIN as the rest of the fleet so the unit picker works.
+        if donor_unit_pin and not data.get("staff_pin"):
+            data["staff_pin"] = donor_unit_pin
+        extra_units.append(Unit.model_validate(data))
+    extra_hospitals = []
+    for hospital in example.hospitals:
+        if hospital.hospital_id in have_hospitals:
+            continue
+        data = hospital.model_dump()
+        if donor_hospital_pin and not data.get("staff_pin"):
+            data["staff_pin"] = donor_hospital_pin
+        extra_hospitals.append(Hospital.model_validate(data))
+    if not extra_units and not extra_hospitals:
+        return loaded
+    merged = loaded.model_copy(update={
+        "units": list(loaded.units) + extra_units,
+        "hospitals": list(loaded.hospitals) + extra_hospitals,
+    })
+    logger.info("Demo fleet expanded from example: +%d units, +%d hospitals",
+                len(extra_units), len(extra_hospitals))
+    return merged
+
+
 @lru_cache(maxsize=1)
 def directory() -> Directory:
     try:
@@ -161,6 +223,8 @@ def directory() -> Directory:
         logger.error("Contacts directory from %s is invalid (%s error(s)); staff sign-in locked",
                      source, getattr(error, "error_count", lambda: 1)())
         return Directory(invalid=configured)
+    if configured and _expand_demo_fleet():
+        loaded = _merge_example_showcase(loaded)
     logger.info("Contacts directory loaded from %s: %d units, %d hospitals",
                 source, len(loaded.units), len(loaded.hospitals))
     return loaded

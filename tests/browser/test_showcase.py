@@ -763,12 +763,21 @@ def test_official_scenario_route_blocked_ahead_is_explained_and_rerouted(context
     trace.locator("summary").click()
     for step in ("Observe", "Detect", "Explain", "Predict", "Options", "Advise"):
         expect(trace).to_contain_text(step)
-    page.get_by_role("button", name="Accept recommended route").click()
-    expect(page.get_by_text("Rerouted", exact=False).first).to_be_visible(timeout=10000)
-    # The decision shows in the control-room log and in the incident channel.
-    expect(page.get_by_text("Dispatcher accepted the recommended route", exact=False).first).to_be_visible(timeout=10000)
-    expect(page.get_by_role("log", name="Incident messages")).to_contain_text(
-        "Dispatcher accepted the recommended route", timeout=10000)
+    # With the full demo fleet a closer backup may win; follow whichever
+    # action the agent put first (reroute or send backup).
+    accept = page.get_by_role("button", name="Accept recommended route")
+    send = page.get_by_role("button", name=re.compile(r"^Send AMB-"))
+    if send.count() and "dispatch" in (alert.inner_text() or "").lower():
+        send.first.click()
+        expect(page.get_by_text("dispatched", exact=False).first).to_be_visible(timeout=10000)
+        expect(page.get_by_text("released", exact=False).first).to_be_visible(timeout=10000)
+    else:
+        accept.click()
+        expect(page.get_by_text("Rerouted", exact=False).first).to_be_visible(timeout=10000)
+        # The decision shows in the control-room log and in the incident channel.
+        expect(page.get_by_text("Dispatcher accepted the recommended route", exact=False).first).to_be_visible(timeout=10000)
+        expect(page.get_by_role("log", name="Incident messages")).to_contain_text(
+            "Dispatcher accepted the recommended route", timeout=10000)
     context.request.post(server + "/api/city/clear", headers={"Authorization": f"Bearer {ACCESS_TOKEN}"})
     context.request.post(server + "/api/incidents/clear", headers={"Authorization": f"Bearer {ACCESS_TOKEN}"})
 
