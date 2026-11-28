@@ -505,7 +505,7 @@ export default function GuidedDemo() {
             <div className="rounded-sm border border-rule bg-paper px-3 py-2">
               <div className="eyebrow">What is happening</div>
               <p role="status" aria-live="polite" className="mt-1 text-[14px] leading-relaxed">
-                {caption ?? 'This tour plays the official scenario: an ambulance is sent to a caller, a road on its way closes, and the monitoring agent works out what to do. Press "Next step" to begin; each step shows the screen where it happens. On the map the ambulance is the vehicle itself: it follows the planned streets and turns to face the road.'}
+                {caption ?? 'This tour plays the official scenario: an ambulance is sent to a caller, a road on its way closes, and the monitoring agent works out what to do. Press "Next step" to begin; each step shows the screen where it happens. On the map the ambulance is the vehicle itself: it eases between position fixes and turns to face the road.'}
               </p>
               {lastDone && !busy && (
                 <p className="mt-1.5 text-[12.5px] leading-relaxed text-text-muted">{lastDone.what}</p>

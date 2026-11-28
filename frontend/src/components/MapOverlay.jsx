@@ -178,16 +178,18 @@ function stopGlide(glides, key) {
   glides.delete(key);
 }
 
-// Move a marker along the street between polls, the way a ride-hail car
-// glides instead of jumping. A hop across the city (a new call, a reset)
-// still jumps: crawling that far would look like the wrong road.
+// Ease a marker between polls (ride-hail style). Straight-line between the
+// last two fixes — not along the road polyline — so a bend can look cut.
+// A hop across the city still jumps. Reduced-motion users get the jump.
 function glideMarker(glides, key, marker, lat, lng, ms) {
   stopGlide(glides, key);
   const from = marker.getLatLng();
   const dLat = lat - from.lat;
   const dLng = lng - from.lng;
   if (Math.abs(dLat) < 1e-7 && Math.abs(dLng) < 1e-7) return;
-  if (Math.hypot(dLat, dLng) > 0.02) {
+  const preferJump = typeof window !== 'undefined'
+    && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  if (preferJump || Math.hypot(dLat, dLng) > 0.02) {
     marker.setLatLng([lat, lng]);
     return;
   }
@@ -542,17 +544,22 @@ export default function MapOverlay({
         [`${u.station ?? ''}`, 'i'], [`Position: ${where}`],
         ...(u.out_of_area ? [['Outside the service area', 'b']] : []),
         ...(proposed ? [['Proposed backup', 'b']] : []));
+      const title = `${u.unit_id}, ${UNIT_STATE[state].label.toLowerCase()}`;
       const existing = fleetMarkers.current.get(u.unit_id);
       if (existing) {
         existing.setIcon(icon);
         existing.setPopupContent(content);
         existing.setZIndexOffset(state === 'busy' ? 500 : 0);
+        // Leaflet keeps the hover title on options; refresh when state changes.
+        existing.options.title = title;
+        const el = existing.getElement?.();
+        if (el) el.title = title;
         glideMarker(glides.current, u.unit_id, existing, at[0], at[1], 4200);
       } else {
         const created = L.marker(at, {
           icon,
           keyboard: false,
-          title: `${u.unit_id}, ${UNIT_STATE[state].label.toLowerCase()}`,
+          title,
           zIndexOffset: state === 'busy' ? 500 : 0,
         }).bindPopup(content).addTo(fleetLayer.current);
         fleetMarkers.current.set(u.unit_id, created);
@@ -677,6 +684,7 @@ export default function MapOverlay({
   // the fit, so a moving unit never re-zooms the map.
   const unitLayer = useRef(null);
   const unitMarker = useRef(null);
+  const unitMarkerId = useRef(null);
   const trailLine = useRef(null);
   useEffect(() => {
     if (!map.current) return;
@@ -709,19 +717,26 @@ export default function MapOverlay({
       const icon = (unit.type && unit.type !== 'Ambulance')
         ? marker('unit', TYPE_LETTER[unit.type] ?? 'U')
         : ambulanceIcon(pos.heading);
-      if (unitMarker.current) {
+      const sameUnit = unitMarker.current && unitMarkerId.current === unit.unit_id;
+      if (sameUnit) {
         unitMarker.current.setIcon(icon);
         unitMarker.current.setPopupContent(content);
         glideMarker(glides.current, 'active-unit', unitMarker.current, pos.lat, pos.lng, 1700);
       } else {
+        if (unitMarker.current) {
+          stopGlide(glides.current, 'active-unit');
+          unitLayer.current.removeLayer(unitMarker.current);
+        }
         unitMarker.current = L.marker([pos.lat, pos.lng], { icon, zIndexOffset: 1000 })
           .bindPopup(content)
           .addTo(unitLayer.current);
+        unitMarkerId.current = unit.unit_id ?? null;
       }
     } else if (unitMarker.current) {
       stopGlide(glides.current, 'active-unit');
       unitLayer.current.removeLayer(unitMarker.current);
       unitMarker.current = null;
+      unitMarkerId.current = null;
     }
   }, [unit, trail, simSpeed]);
 

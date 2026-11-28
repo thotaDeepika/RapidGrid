@@ -222,7 +222,7 @@ export default function LandingPage() {
                 </h2>
               </div>
               <p className="max-w-sm text-[13px] leading-relaxed text-on-ink-muted">
-                On the live map the vehicle is the marker. It glides along the planned streets and turns to face the road it is on.
+                On the live map the vehicle is the marker. It eases between GPS fixes and turns to face the road it is on.
               </p>
             </div>
             <Frame
