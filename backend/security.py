@@ -61,15 +61,20 @@ def allowed_origins() -> list[str]:
 
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+# Both public addresses of this deployment. Demo mode answers each of them,
+# whether or not Render's hostname variable names only the custom domain.
+_PUBLISHED_HOSTS = {"rapidgrid.onrender.com", "rapidgrid.highcortisol.xyz"}
 
 
 def allowed_hosts() -> set[str]:
     """Host names the open demo API answers to.
 
-    Local names, plus RAPIDGRID_ALLOWED_HOSTS (comma-separated), the hosts of
+    Local names, the published Render and custom-domain hosts, plus
+    RAPIDGRID_ALLOWED_HOSTS (comma-separated), the hosts of
     RAPIDGRID_ALLOWED_ORIGINS, and Render's own hostname when present.
     """
     hosts = set(_LOCAL_HOSTS)
+    hosts.update(_PUBLISHED_HOSTS)
     hosts.update(h.strip().lower() for h in os.getenv("RAPIDGRID_ALLOWED_HOSTS", "").split(",") if h.strip())
     hosts.update((urlsplit(origin).hostname or "").lower() for origin in allowed_origins())
     if os.getenv("RENDER_EXTERNAL_HOSTNAME"):
