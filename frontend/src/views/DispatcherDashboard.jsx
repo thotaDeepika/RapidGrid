@@ -61,6 +61,10 @@ export default function DispatcherDashboard() {
     const fetchIncidents = async () => {
       try {
         const res = await fetch('/api/incidents/');
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) setConn('auth');
+          return;
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (cancelled) return;
@@ -397,8 +401,8 @@ export default function DispatcherDashboard() {
         {selected ? (
           // On desktop the map column stays in view at screen height while the
           // long rationale column scrolls, so routes and alerts stay visible.
-          <div className="flex min-w-0 min-h-[520px] flex-col gap-3 lg:sticky lg:top-3 lg:h-[calc(100vh-1.5rem)] lg:self-start">
-            <Panel className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-w-0 min-h-[520px] flex-col gap-3 xl:sticky xl:top-3 xl:z-0 xl:h-[calc(100vh-1.5rem)] xl:self-start xl:overflow-hidden">
+            <Panel className="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden">
               <PanelHead
                 label="Tactical map"
                 right={
@@ -429,7 +433,7 @@ export default function DispatcherDashboard() {
                   </div>
                 }
               />
-              <div className="relative min-h-[300px] flex-1 sm:min-h-[360px] lg:min-h-[420px]">
+              <div className="relative z-0 h-[min(50vh,420px)] min-h-[160px] w-full flex-1 overflow-hidden xl:h-auto">
                 {routeCoords.length > 0 || view.phase1_route_coordinates?.length > 0 ? (
                   <MapOverlay
                     height="100%"
@@ -457,7 +461,7 @@ export default function DispatcherDashboard() {
                     osmHospitals={osmHospitals}
                     stations={stations}
                     highlightUnit={openAlert?.backup?.unit_id ?? null}
-                    className="!rounded-none !border-0"
+                    className="absolute inset-0 !h-full !max-h-full !rounded-none !border-0"
                   />
                 ) : selected ? (
                   <div className="absolute inset-0 grid place-items-center bg-paper-sunk">
@@ -476,7 +480,7 @@ export default function DispatcherDashboard() {
                     osmHospitals={osmHospitals}
                     stations={stations}
                     fleet={fleet}
-                    className="!rounded-none !border-0"
+                    className="absolute inset-0 !h-full !max-h-full !rounded-none !border-0"
                   />
                 )}
               </div>
@@ -517,7 +521,7 @@ export default function DispatcherDashboard() {
             </Panel>
 
             {/* Actions */}
-            <Panel className="p-3">
+            <Panel className="min-h-[8.75rem] shrink-0 overflow-y-auto p-3 xl:max-h-[46%]">
               <div className="mb-3">
                 <CallerDetails key={selected.incident_id} incidentId={selected.incident_id} />
               </div>

@@ -319,9 +319,13 @@
   font-family: var(--font-body) !important;
   background: var(--color-ink-sunk) !important;
   position: relative;
-  z-index: 0;
+  z-index: 0 !important;
   isolation: isolate;
-  overflow: hidden;
+  /* Tiles and markers use high z-index. Paint containment keeps them inside
+     this box so a sticky map cannot cover the queue, the header, or the panels. */
+  overflow: hidden !important;
+  contain: paint;
+  max-height: 100%;
 }
 
 .map-tinted .leaflet-tile-pane {

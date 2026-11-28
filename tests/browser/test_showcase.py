@@ -208,9 +208,9 @@ def test_report_refresh_dispatch_chat_pickup_refresh_and_handover(context, serve
     poll_incident(context, server, incident_id, "patient_picked_up")
     driver.reload()
     # The selected assignment and stage must both survive reload.
-    expect(driver.get_by_role("button", name="Patient handed over at ER", exact=True)).to_be_visible(timeout=10000)
+    expect(driver.get_by_role("button", name="Reached Destination / Hospital (Patient Arrived)", exact=True)).to_be_visible(timeout=10000)
     expect(driver.get_by_role("button", name="I have reached the patient", exact=True)).not_to_be_visible()
-    driver.get_by_role("button", name="Patient handed over at ER", exact=True).click()
+    driver.get_by_role("button", name="Reached Destination / Hospital (Patient Arrived)", exact=True).click()
     poll_incident(context, server, incident_id, "completed")
     assert not any(item["incident_id"] == incident_id for item in
                    context.request.get(server + "/api/driver/active").json()["dispatches"])
@@ -257,7 +257,7 @@ def test_fire_scene_arrival_keeps_backup_ambulance_workflow_active(context, serv
     ambulance.get_by_role("button", name="I have reached the patient", exact=True).click()
     poll_incident(context, server, incident_id, "patient_picked_up")
     ambulance.reload()
-    ambulance.get_by_role("button", name="Patient handed over at ER", exact=True).click()
+    ambulance.get_by_role("button", name="Reached Destination / Hospital (Patient Arrived)", exact=True).click()
     incident = poll_incident(context, server, incident_id, "completed")
     assert incident["unit_statuses"] == {"primary": "arrived", "ambulance": "arrived"}
 

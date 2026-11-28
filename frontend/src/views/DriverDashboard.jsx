@@ -95,6 +95,10 @@ export default function DriverDashboard() {
       try {
         // A stalled request must show as an outage, not hang silently.
         const res = await fetch('/api/driver/active', { signal: AbortSignal.timeout(5000) });
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) setConn('auth');
+          return;
+        }
         if (!res.ok) throw new Error();
         const data = await res.json();
         if (!cancelled) {
@@ -276,6 +280,11 @@ export default function DriverDashboard() {
                 title="Cannot reach dispatch"
                 hint="Retrying every few seconds. Assigned calls appear as soon as the connection returns."
               />
+            ) : conn === 'auth' ? (
+              <Empty
+                title="Staff sign-in required"
+                hint="Sign in with this unit's PIN. Assigned calls appear after that."
+              />
             ) : (
               <Empty
                 title="No calls assigned"
@@ -342,6 +351,7 @@ export default function DriverDashboard() {
         <ChevronLeft size={14} /> All calls
       </button>
 
+      <ConnectionState status={conn} />
       {actionError && <p role="alert" className="rounded-sm border border-critical bg-critical-wash p-3 text-sm text-critical">{actionError}</p>}
       {active?.destination_on_divert && !sceneResponse && (
         <p role="alert" className="rounded-sm border border-critical bg-critical-wash p-3 text-sm text-critical">

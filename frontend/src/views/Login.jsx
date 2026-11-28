@@ -176,8 +176,27 @@ export default function Login() {
 
   const enter = (roleId, profile = null) => {
     login(roleId, profile);
-    navigate(`/${roleId}`);
+    const next = new URLSearchParams(window.location.search).get('next');
+    const safe = roleId === 'dispatcher' ? ['/dispatcher', '/control'] : [`/${roleId}`];
+    navigate(safe.includes(next) ? next : `/${roleId}`);
   };
+
+  useEffect(() => {
+    if (directoryState !== 'ready') return;
+    // A choice made while the directory was loading stays. The deep link only
+    // applies when the portal list is still showing.
+    if (picking) return;
+    const pick = new URLSearchParams(window.location.search).get('pick');
+    if (pick !== 'dispatcher') return;
+    if (directory.enabled) {
+      setNeedsPin({ role: 'dispatcher', subject: 'dispatch', profile: null, label: 'City dispatch' });
+      setPicking(null);
+    } else {
+      enter('dispatcher');
+    }
+    // picking is read once when the directory becomes ready. enter changes every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [directoryState, directory.enabled]);
 
   const choose = (role) => {
     if (role.needsProfile) setPicking(role.id);

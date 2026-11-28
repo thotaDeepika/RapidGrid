@@ -79,7 +79,10 @@ export function Stat({ label, value, unit, tone = 'default', sub, ink = false, m
         {unit && <span className="ml-1 text-[13px] font-medium opacity-60">{unit}</span>}
       </div>
       {sub && (
-        <div className={`mt-1.5 t-micro ${ink ? 'text-on-ink-muted' : 'text-text-faint'}`}>
+        <div
+          title={typeof sub === 'string' ? sub : undefined}
+          className={`mt-1.5 line-clamp-1 t-micro ${ink ? 'text-on-ink-muted' : 'text-text-faint'}`}
+        >
           {sub}
         </div>
       )}
@@ -194,7 +197,7 @@ export function Button({
    ------------------------------------------------------------------------- */
 export function ConnectionState({ status, lastOk, ink = false }) {
   if (status === 'ok') return null;
-  const down = status === 'down';
+  const down = status === 'down' || status === 'auth';
   return (
     <div
       role="status"
@@ -205,8 +208,8 @@ export function ConnectionState({ status, lastOk, ink = false }) {
       }`}
     >
       <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-current" />
-      {down ? 'Backend unreachable' : 'Reconnecting'}
-      {lastOk && <span className="hidden font-normal normal-case opacity-70 sm:inline">· {lastOk}</span>}
+      {status === 'auth' ? 'Staff sign-in required' : down ? 'Backend unreachable' : 'Reconnecting'}
+      {lastOk && status !== 'auth' && <span className="hidden font-normal normal-case opacity-70 sm:inline">· {lastOk}</span>}
     </div>
   );
 }
