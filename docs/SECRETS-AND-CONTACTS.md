@@ -12,6 +12,7 @@ Set these on Render (Environment tab) for production, or in `backend/.env` local
 |---|---|---|---|
 | `RAPIDGRID_CONTACTS` | The whole contacts JSON (see part 2). A hosting secret. | **Yes, for staff sign-in on Render.** A missing value locks staff sign-in. | Paste the JSON as one value. |
 | `RAPIDGRID_CONTACTS_FILE` | Alternative to `RAPIDGRID_CONTACTS`: a path to a JSON file. | Optional. | Path on the server. |
+| `RAPIDGRID_EXPAND_DEMO_FLEET` | In `demo` mode, fill missing example hub units (e.g. MS Ramaiah AMB-21) so the map and unit picker match. | Optional. Default on in demo (`1`). Set `0` to keep contacts exact. | `1` or `0`. |
 | `RAPIDGRID_MODE` | `demo` for the local synthetic demo, `operator` for a hosted showcase. | Yes (`operator` on Render). | Type it. |
 | `RAPIDGRID_DATA_DIR` | Where the database lives. Use a persistent disk path on Render. | Yes on Render with a disk. | e.g. `/var/data/rapidgrid` |
 | `GOOGLE_ROUTES_API_KEY` | Google Routes (live traffic ETAs). | Optional. Leave empty for the finale (see the plan). | From Google Cloud console. |
