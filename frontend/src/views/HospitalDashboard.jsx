@@ -64,6 +64,10 @@ export default function HospitalDashboard() {
         const id = hospitalInfo?.id || 'all';
         const name = encodeURIComponent(hospitalInfo?.name ?? '');
         const res = await fetch(`/api/hospital/${id}/incoming?name=${name}`);
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) setConn('auth');
+          return;
+        }
         if (!res.ok) throw new Error();
         const data = await res.json();
         if (!cancelled) {

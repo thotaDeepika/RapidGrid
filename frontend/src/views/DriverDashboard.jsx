@@ -95,6 +95,10 @@ export default function DriverDashboard() {
       try {
         // A stalled request must show as an outage, not hang silently.
         const res = await fetch('/api/driver/active', { signal: AbortSignal.timeout(5000) });
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) setConn('auth');
+          return;
+        }
         if (!res.ok) throw new Error();
         const data = await res.json();
         if (!cancelled) {

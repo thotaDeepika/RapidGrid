@@ -54,14 +54,10 @@ async function waitFor(check, { timeoutMs = 60000, everyMs = 1000 } = {}) {
 
 const incident = (id) => api(`/api/incidents/${encodeURIComponent(id)}`);
 
-/** Can this browser act as every role? Operator sign-in, or the open local
- * demo (no staff PINs). Checked before anything is created. */
+/** One staff session is one role, so the tour only runs when PINs are off. */
 async function canRunAllRoles() {
-  const [session, staff] = await Promise.all([
-    api('/api/session').catch(() => ({})),
-    api('/api/staff/session').catch(() => ({})),
-  ]);
-  return Boolean(session.operator_authenticated) || staff.enabled === false;
+  const staff = await api('/api/staff/session').catch(() => ({}));
+  return staff.enabled === false;
 }
 
 /** The unit now on the call (a backup may have replaced the first one). */
@@ -76,7 +72,7 @@ const STEPS = [
     title: 'A caller reports an emergency',
     run: async (ctx) => {
       if (!(await canRunAllRoles())) {
-        throw new Error('The guided demo acts as every role, so it needs the operator sign-in. Nothing was created.');
+        throw new Error('Staff PINs are on, so this tour cannot act as dispatch, the crew and the ER at once. Nothing was created. Sign in on each screen with its PIN.');
       }
       if (!ctx.id) { // a retry after a timeout must not file a second report
         const created = await api('/api/incidents', {
@@ -338,6 +334,15 @@ export default function GuidedDemo() {
   const lastDone = step > 0 ? TOUR[step - 1] : null;
 
   const [pointed, setPointed] = useState(false);
+  const [staffLocked, setStaffLocked] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/staff/session')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (!cancelled) setStaffLocked(Boolean(data?.enabled)); })
+      .catch(() => { if (!cancelled) setStaffLocked(null); });
+    return () => { cancelled = true; };
+  }, []);
   const focus = (name, look, open, staleDoc = null) => {
     setScreen(name);
     setPointed(false);
@@ -435,18 +440,24 @@ export default function GuidedDemo() {
                 {projector ? 'Exit projector' : 'Projector'}
               </Button>
               {!done && (
-                <Button variant="quiet" aria-pressed={autoplay} onClick={() => { setError(null); setAutoplay((v) => !v); }}>
+                <Button variant="quiet" aria-pressed={autoplay} disabled={staffLocked === true} onClick={() => { setError(null); setAutoplay((v) => !v); }}>
                   {autoplay ? 'Pause' : 'Play all'}
                 </Button>
               )}
               {done
                 ? <Button onClick={restart}>Run again</Button>
-                : <Button onClick={next} disabled={busy || autoplay}>{busy ? 'Working…' : 'Next step'}</Button>}
+                : <Button onClick={next} disabled={busy || autoplay || staffLocked === true}>{busy ? 'Working…' : 'Next step'}</Button>}
             </div>
           </div>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-rule" aria-hidden="true">
             <div className="h-full bg-signal transition-all" style={{ width: `${progress}%` }} />
           </div>
+          {staffLocked && (
+            <p role="alert" className="mt-2 text-[13px] leading-relaxed text-critical">
+              Staff PINs are on. This tour acts as every role at once, so it stays off.
+              Sign in on the dispatch, crew and ER screens with each PIN.
+            </p>
+          )}
           {projector && (
             // Projector: one large caption line in the bar; the screen fills the rest.
             <div data-testid="projector-caption" className="mt-2 grid gap-1 sm:grid-cols-[3fr_2fr] sm:gap-4">

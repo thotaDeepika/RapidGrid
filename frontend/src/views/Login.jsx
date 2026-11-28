@@ -176,8 +176,23 @@ export default function Login() {
 
   const enter = (roleId, profile = null) => {
     login(roleId, profile);
-    navigate(`/${roleId}`);
+    const next = new URLSearchParams(window.location.search).get('next');
+    const safe = ['/dispatcher', '/driver', '/hospital', '/control'];
+    navigate(safe.includes(next) ? next : `/${roleId}`);
   };
+
+  useEffect(() => {
+    if (directoryState !== 'ready') return;
+    const pick = new URLSearchParams(window.location.search).get('pick');
+    if (pick !== 'dispatcher') return;
+    if (directory.enabled) {
+      setNeedsPin({ role: 'dispatcher', subject: 'dispatch', profile: null, label: 'City dispatch' });
+      setPicking(null);
+    } else {
+      enter('dispatcher');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [directoryState, directory.enabled]);
 
   const choose = (role) => {
     if (role.needsProfile) setPicking(role.id);
