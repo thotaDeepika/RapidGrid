@@ -465,12 +465,12 @@ export default function MapOverlay({
         ? (fresh ? 'live GPS' : 'GPS, no recent fix')
         : pos.source === 'simulated' ? 'simulated' : 'at station';
       const face = ambulance
-        ? `<img src="/art/ambulance-top.jpg" alt="" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;object-fit:cover;transform:rotate(${Number.isFinite(pos.heading) ? pos.heading : 0}deg)">`
+        ? `<img src="/art/ambulance-top.jpg" alt="" width="${size}" height="${size}" style="display:block;width:${size}px;height:${size}px;object-fit:cover;border-radius:5px;transform:rotate(${Number.isFinite(pos.heading) ? pos.heading : 0}deg)"><span style="position:absolute;right:-3px;bottom:-3px;width:9px;height:9px;border-radius:50%;background:${fill};border:1.5px solid #fff"></span>`
         : (TYPE_LETTER[u.type] ?? '');
       L.marker(at, {
         icon: L.divIcon({
           className: '',
-          html: `<div class="rg-fleet rg-fleet-${state}${proposed ? ' rg-fleet-backup' : ''}" style="width:${size}px;height:${size}px;border-radius:${ambulance ? 5 : 50}%;background:${ambulance ? '#f3efe6' : fill};border:${ring};box-shadow:0 0 0 1px rgba(0,0,0,.35);color:#fff;font:700 9px/${size - 3}px system-ui;text-align:center;overflow:hidden;opacity:${state === 'off' ? 0.7 : 1}">${face}</div>`,
+          html: `<div class="rg-fleet rg-fleet-${state}${proposed ? ' rg-fleet-backup' : ''}" style="position:relative;width:${size}px;height:${size}px;border-radius:${ambulance ? 5 : 50}%;background:${ambulance ? '#f3efe6' : fill};border:${ring};box-shadow:0 0 0 1px rgba(0,0,0,.35);color:#fff;font:700 9px/${size - 3}px system-ui;text-align:center;overflow:${ambulance ? 'visible' : 'hidden'};opacity:${state === 'off' ? 0.7 : 1}">${face}</div>`,
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
         }),
