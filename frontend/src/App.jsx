@@ -56,6 +56,13 @@ function StaffGate({ staffRole, home, children }) {
           setState('open');
           return;
         }
+        if (ses.role === 'presenter') {
+          if (staffRole === 'unit') login('driver');
+          else if (staffRole === 'hospital') login('hospital');
+          else login('dispatcher');
+          setState('open');
+          return;
+        }
         if (ses.role !== staffRole) {
           setState('closed');
           return;

@@ -59,7 +59,12 @@ async function canRunAllRoles() {
   // A failed check must stay a failed check. Swallowing it made a timeout
   // look like staff PINs were on.
   const staff = await api('/api/staff/session');
-  return staff.enabled === false;
+  if (staff.enabled === false || staff.role === 'presenter') return true;
+  // Demo mode: one stage session may play every role. Operator mode refuses.
+  const presented = await fetch('/api/staff/presenter', { method: 'POST' });
+  if (!presented.ok) return false;
+  const body = await presented.json().catch(() => ({}));
+  return body.role === 'presenter';
 }
 
 /** The unit now on the call (a backup may have replaced the first one). */
@@ -74,7 +79,7 @@ const STEPS = [
     title: 'A caller reports an emergency',
     run: async (ctx) => {
       if (!(await canRunAllRoles())) {
-        throw new Error('Staff PINs are on, so this tour cannot act as dispatch, the crew and the ER at once. Nothing was created. Sign in on each screen with its PIN.');
+        throw new Error('This service is not in demo mode, so this tour cannot act as dispatch, the crew and the ER at once. Nothing was created.');
       }
       if (!ctx.id) { // a retry after a timeout must not file a second report
         const created = await api('/api/incidents', {
@@ -341,7 +346,16 @@ export default function GuidedDemo() {
     let cancelled = false;
     fetch('/api/staff/session')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => { if (!cancelled) setStaffLocked(Boolean(data?.enabled)); })
+      .then(async (data) => {
+        if (cancelled || !data) return;
+        if (!data.enabled || data.role === 'presenter') {
+          setStaffLocked(false);
+          return;
+        }
+        const presented = await fetch('/api/staff/presenter', { method: 'POST' });
+        const body = presented.ok ? await presented.json().catch(() => ({})) : {};
+        if (!cancelled) setStaffLocked(body.role !== 'presenter');
+      })
       .catch(() => { if (!cancelled) setStaffLocked(null); });
     return () => { cancelled = true; };
   }, []);
@@ -456,7 +470,7 @@ export default function GuidedDemo() {
           </div>
           {staffLocked && (
             <p role="alert" className="mt-2 text-[13px] leading-relaxed text-critical">
-              Staff PINs are on. This tour acts as every role at once, so it stays off.
+              This service is not in demo mode, so the tour cannot play every role at once.
               Sign in on the dispatch, crew and ER screens with each PIN.
             </p>
           )}

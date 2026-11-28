@@ -62,6 +62,16 @@ def sign_in(client, role, subject, pin):
     return client.post("/api/staff/session", json={"role": role, "subject": subject, "pin": pin})
 
 
+def test_the_guided_tour_can_play_every_role_in_demo_mode(with_pins, monkeypatch):
+    client = fresh()
+    opened = client.post("/api/staff/presenter")
+    assert opened.status_code == 200 and opened.json()["role"] == "presenter"
+    assert client.post("/api/city/conditions", json={"hour": 9}).status_code == 200
+    monkeypatch.setenv("RAPIDGRID_MODE", "operator")
+    assert client.post("/api/city/conditions", json={"hour": 9}).status_code == 401
+    assert client.post("/api/staff/presenter").status_code == 404
+
+
 def test_without_staff_pins_staff_actions_stay_open(monkeypatch):
     monkeypatch.delenv("RAPIDGRID_CONTACTS", raising=False)
     monkeypatch.setenv("RAPIDGRID_CONTACTS_FILE", str(Path(contacts.__file__).with_name("contacts.example.json")))

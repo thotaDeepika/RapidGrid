@@ -242,7 +242,10 @@ def _parse(cookie: str) -> Optional[tuple[str, str, str, float]]:
     issued, sid, role, subject, signature = parts
     if not (issued.isascii() and issued.isdigit() and len(issued) <= 12):
         return None
-    if role not in ("dispatcher", "unit", "hospital") or not _SUBJECT.match(subject):
+    if role == "presenter":
+        if subject != "stage":
+            return None
+    elif role not in ("dispatcher", "unit", "hospital") or not _SUBJECT.match(subject):
         return None
     if not 16 <= len(sid) <= 64 or not sid.isascii():
         return None
@@ -266,6 +269,11 @@ def current(connection: HTTPConnection) -> Optional[tuple[str, str]]:
     sid, role, subject, _ = parsed
     if security.is_revoked(sid):
         return None
+    if role == "presenter":
+        # The stage tour exists only while this service is in demo mode.
+        if security.mode() != "demo":
+            return None
+        return role, subject
     # A PIN removed from the directory ends that account's sessions.
     if contacts.staff_pin(role, subject) is None:
         return None
@@ -285,7 +293,7 @@ def require(connection: Optional[HTTPConnection], role: str, subject: Optional[s
     who = current(connection) if connection is not None else None
     if who is None:
         raise HTTPException(status_code=401, detail="Staff sign-in required")
-    if who[0] != "operator" and (who[0] != role or (subject is not None and who[1] != subject)):
+    if who[0] not in ("operator", "presenter") and (who[0] != role or (subject is not None and who[1] != subject)):
         raise HTTPException(status_code=403, detail="This sign-in cannot do that")
     # Cookie sessions (staff and operator alike): a state change must come
     # from our own pages. Browsers send Origin on such requests; a missing one
@@ -324,6 +332,25 @@ async def staff_session(request: Request, response: Response):
     response.headers["Cache-Control"] = "no-store"
     who = current(request) if enabled() else None
     return {"enabled": enabled(), "role": who[0] if who else None, "subject": who[1] if who else None}
+
+
+@router.post("/presenter")
+async def presenter_session(request: Request, response: Response):
+    """Let the guided tour act as dispatch, the crew and the ER at once.
+
+    Only in demo mode. Operator mode keeps one PIN to one role. The cookie
+    does not reveal a PIN and dies when the service leaves demo mode.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    if security.mode() != "demo":
+        raise HTTPException(status_code=404, detail="The guided tour is not open in this mode")
+    if not enabled():
+        return {"enabled": False, "role": None, "subject": None}
+    secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(COOKIE_NAME, _cookie_value("presenter", "stage"), max_age=SESSION_SECONDS,
+                        httponly=True, secure=secure, samesite="strict", path="/")
+    logger.info("Guided tour presenter session")
+    return {"enabled": True, "role": "presenter", "subject": "stage"}
 
 
 @router.post("/session")
