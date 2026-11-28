@@ -88,6 +88,9 @@ _progress: dict[str, tuple[str, float, Optional[dict]]] = {}
 # demo "wrong turn": the unit follows the detour instead of its leg until the
 # leg changes (for example, the dispatcher accepts a reroute).
 _detours: dict[str, tuple[str, list[dict], float]] = {}
+# unit_id -> (leg key, road points from where the unit was up to the leg).
+# Joining with a straight line cuts across the blocks in between.
+_approaches: dict[str, tuple[str, list[dict]]] = {}
 
 
 def route_key(route: list[dict]) -> str:
@@ -210,12 +213,17 @@ def _drive(unit: dict, incident: dict, key: str, route: list[dict], eta_s: Optio
         # Carry on from the last real fix: its distance along the leg,
         # on the leg as already driven (not back to its first point).
         here = unit["position"]
-        driven = [start, *route] if start is not None else route
+        driven = [start, *route] if start is not None else list(route)
+        cached = _approaches.get(unit["unit_id"])
+        if cached and cached[0] == leg_key:
+            driven = cached[1] + driven
         travelled = along(driven, here)
     elif previous_key != leg_key or handover:
         travelled = 0.0
         here = unit["position"]
         start = None
+        if previous_key != leg_key:
+            _approaches.pop(unit["unit_id"], None)
         if _distance(here, route[0]) > 50:
             from agents.monitor import project
 
@@ -224,12 +232,18 @@ def _drive(unit: dict, incident: dict, key: str, route: list[dict], eta_s: Optio
                 # then went quiet): carry on from that point of it.
                 travelled = along(route, here)
             else:
-                # Off the leg (a backup taking over from elsewhere):
-                # drive from where it is, not from a jump to the first
-                # point. Fixed for the whole leg.
-                start = {"lat": here["lat"], "lng": here["lng"]}
+                # Off the leg. Join it on roads. A straight line from a
+                # station yard to the first road node cuts through blocks.
+                approach = _road_approach(here, route)
+                if approach:
+                    _approaches[unit["unit_id"]] = (leg_key, approach)
+                else:
+                    start = {"lat": here["lat"], "lng": here["lng"]}
     if start is not None:
         route = [start] + route
+    cached = _approaches.get(unit["unit_id"])
+    if cached and cached[0] == leg_key:
+        route = cached[1] + route
     total = length(route)
     speed = (total / eta_s) if eta_s and total else _DEFAULT_SPEED_MPS
     target = min(total, travelled + speed * dt_s * sim_speed())
@@ -277,9 +291,32 @@ def _closure_on(route: list[dict], start_m: float, end_m: float) -> Optional[flo
     return None
 
 
+def _road_approach(here: dict, route: list[dict]) -> Optional[list[dict]]:
+    """Road coordinates from `here` up to, but not including, the leg start.
+
+    None when the road graph cannot connect them. The caller then keeps the
+    old straight join, which is only a last resort.
+    """
+    from agents.local_router import local_router
+
+    if not local_router.available and not local_router.load():
+        return None
+    path = local_router.find_path((here["lat"], here["lng"]), (route[0]["lat"], route[0]["lng"]))
+    if not path or len(path["coordinates"]) < 2:
+        return None
+    coords = path["coordinates"]
+    leg_start = route[0]
+    # Drop only a duplicated leg start. The last graph node is the road
+    # the leg begins on, and skipping it cuts the corner.
+    if coords[-1]["lat"] == leg_start["lat"] and coords[-1]["lng"] == leg_start["lng"]:
+        coords = coords[:-1]
+    return coords or None
+
+
 def reset() -> None:
     _progress.clear()
     _detours.clear()
+    _approaches.clear()
 
 
 def _stale_open_alerts(incident: dict) -> list[dict]:
