@@ -126,8 +126,8 @@ def _incoming(hospital_id: str) -> list[dict]:
             "hospital_name": hospital_name, "eta_minutes": 0 if unit_arrived else view.get("eta_minutes"),
             "patient_summary": incident.get("citizen_text") or incident.get("details") or "No patient description provided",
             "clinical_classification": incident.get("details"),
-            "caller_name": incident.get("citizen_name"),
-            "caller_phone": incident.get("citizen_phone"),
+            # Caller name and number stay off this list. Staff use the recorded
+            # reveal on the call, so a board refresh is not a silent disclosure.
             "registered": bool(incident.get("citizen_id")),
             "assigned_driver": (incident.get("unit_assignments") or {}).get(medical_unit) or (incident.get("assigned_driver") if medical_unit == "primary" else None),
             "destination_on_divert": destination_on_divert(incident),

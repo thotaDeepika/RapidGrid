@@ -262,7 +262,10 @@ def test_primary_and_backup_claim_and_complete_independently(client, mocked_rout
         # The patient is delivered; the fire engine is still on its way. The call
         # must not rewind to "dispatched" after the handover.
         assert handover.json()["incident_status"] == "patient_picked_up"
-        assert client.get("/api/hospital/blr-007/incoming").json()["incoming"] == []
+        # The patient stays on the ER board, marked arrived, until the desk admits them.
+        arrived = client.get("/api/hospital/blr-007/incoming").json()["incoming"]
+        assert [row["incident_id"] for row in arrived] == ["INC-review"]
+        assert arrived[0]["unit_arrived"] is True
         assert client.post("/api/incidents/INC-review/arrived?unit_type=primary").status_code == 200
     assert report["status"] == "completed"
     assert report["unit_statuses"] == {"primary": "arrived", "ambulance": "arrived"}
