@@ -52,6 +52,7 @@ export default function HospitalDashboard() {
   const [showAllModal, setShowAllModal] = useState(false);
   const [admitting, setAdmitting] = useState({});
   const [admittedList, setAdmittedList] = useState([]);
+  const [admitsHistory, setAdmitsHistory] = useState([]);
   const [patientHistoryModal, setPatientHistoryModal] = useState(null); // incident or null
   const [patientHistoryData, setPatientHistoryData] = useState(null);
   const [historyError, setHistoryError] = useState('');
@@ -75,6 +76,17 @@ export default function HospitalDashboard() {
           setIncoming(data.incoming ?? []);
           setConn('ok');
         }
+
+        // Fetch history of admitted patients
+        try {
+          const admRes = await fetch(`/api/hospital/${id}/admits?name=${name}`);
+          if (admRes.ok) {
+            const admData = await admRes.json();
+            if (!cancelled) {
+              setAdmitsHistory(admData.admits ?? []);
+            }
+          }
+        } catch { /* non-critical */ }
         // Sync ICU/divert state from backend so refresh doesn't show stale "Accepting".
         if (id !== 'all' && !cancelled) {
           try {
@@ -128,7 +140,18 @@ export default function HospitalDashboard() {
       const res = await fetch(`/api/hospital/${id}/admit/${incidentId}`, { method: 'POST' });
       if (res.ok) {
         setAdmittedList((prev) => [...prev, incidentId]);
+        const admittedCase = incoming.find((c) => c.incident_id === incidentId);
         setIncoming((prev) => prev.filter((c) => c.incident_id !== incidentId));
+        if (admittedCase) {
+          setAdmitsHistory((prev) => [
+            {
+              ...admittedCase,
+              status: 'admitted',
+              admitted_timestamp: Date.now() / 1000,
+            },
+            ...prev,
+          ]);
+        }
       }
     } catch {
       /* non-critical */
@@ -444,6 +467,105 @@ export default function HospitalDashboard() {
           Bed and blood availability shown across the platform are modelled. Connecting a hospital
           HMIS or HL7 feed would replace them with live counts.
         </p>
+      </Panel>
+
+      {/* History of Admits */}
+      <Panel data-tour="er-admitted">
+        <PanelHead
+          label={`Admitted Patients History · ${admitsHistory.length}`}
+          right={
+            <span className="text-[12px] font-mono text-text-muted">
+              {hospitalInfo?.name ?? 'All facilities'}
+            </span>
+          }
+        />
+        {admitsHistory.length === 0 ? (
+          <div className="px-5 py-6 text-center">
+            <p className="text-[13px] font-semibold text-text">No admitted patients yet</p>
+            <p className="mt-1 text-[12px] text-text-muted">
+              Patients admitted at the ER or confirmed from the incoming queue appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-rule">
+            {admitsHistory.map((adm) => {
+              const band = severityBand(adm.severity ?? 0);
+              const admitTime = adm.admitted_timestamp
+                ? new Date(adm.admitted_timestamp * 1000).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })
+                : 'Just now';
+
+              return (
+                <article key={adm.incident_id} className="p-4 sm:p-5 transition-colors hover:bg-paper-sunk/40">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[12px] font-bold text-text" title={adm.incident_id}>
+                          {shortId(adm.incident_id)}
+                        </span>
+                        <SeverityTag severity={adm.severity ?? 0} />
+                        <span className="t-meta uppercase tracking-[0.1em] text-text-faint">
+                          {adm.emergency_type}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-xs border border-signal bg-signal/10 px-2 py-0.5 text-[11px] font-bold text-signal-hover">
+                          <Check size={12} /> ADMITTED
+                        </span>
+                      </div>
+
+                      <div className="mt-2">
+                        <span className="eyebrow text-text-muted">Chief Complaint / Description</span>
+                        <p className="mt-0.5 text-[14px] font-medium leading-relaxed text-text">
+                          "{adm.patient_summary}"
+                        </p>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xs border border-rule bg-paper-sunk px-3 py-2 text-[12px]">
+                        <div className="flex items-center gap-1.5 text-text">
+                          <User size={13} className="text-text-muted" />
+                          <span>Patient: <strong>{adm.caller_name || 'Name not displayed'}</strong></span>
+                        </div>
+                        {adm.caller_phone && (
+                          <div className="flex items-center gap-1.5 text-text">
+                            <Phone size={13} className="text-text-muted" />
+                            <span className="font-mono">{adm.caller_phone}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1.5">
+                          <FileText size={13} className="text-text-muted" />
+                          <span className="t-meta text-text-faint">
+                            {adm.registered ? 'Verified citizen record' : 'Emergency intake record'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-text-faint">
+                        <span>Transporting unit: <strong className="text-text">{adm.assigned_driver || 'Ambulance'}</strong></span>
+                        <span>Facility: <strong className="text-text">{adm.hospital_name || hospitalInfo?.name || 'ER'}</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end gap-1.5 border-t border-rule pt-2 sm:border-0 sm:pt-0">
+                      <span className="eyebrow text-text-muted">Admission Time</span>
+                      <span className="font-mono text-[14px] font-bold text-text">
+                        {admitTime}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => viewPatientHistory(adm)}
+                        className="tap mt-2 inline-flex items-center gap-1.5 rounded-xs border border-rule bg-paper px-2.5 py-1 text-[12px] font-semibold text-signal-hover hover:border-signal"
+                      >
+                        <History size={13} /> View History
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </Panel>
 
       {/* Modal dialog showing all incoming patients with details and arrival times */}

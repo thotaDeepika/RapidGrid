@@ -51,9 +51,9 @@ export default function CallNumber({ phone, label, className = '', iconSize = 14
   return (
     <span className="inline-flex flex-col items-center gap-1">
       <button type="button" onClick={copy} className={className}>
-        <Phone size={iconSize} /> {copied ? `${shown} copied` : `Copy ${shown}`}
+        <Phone size={iconSize} /> {copied ? 'Copied' : text}
       </button>
-      <span className="t-meta text-text-faint">Dial {shown} from your phone</span>
+      <span className="t-meta text-text-faint">{shown}</span>
     </span>
   );
 }
