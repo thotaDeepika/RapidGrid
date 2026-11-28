@@ -521,18 +521,12 @@ export default function HospitalDashboard() {
                       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xs border border-rule bg-paper-sunk px-3 py-2 text-[12px]">
                         <div className="flex items-center gap-1.5 text-text">
                           <User size={13} className="text-text-muted" />
-                          <span>Patient: <strong>{adm.caller_name || 'Name not displayed'}</strong></span>
+                          <span>Patient: <strong>Name not displayed</strong></span>
                         </div>
-                        {adm.caller_phone && (
-                          <div className="flex items-center gap-1.5 text-text">
-                            <Phone size={13} className="text-text-muted" />
-                            <span className="font-mono">{adm.caller_phone}</span>
-                          </div>
-                        )}
                         <div className="flex items-center gap-1.5">
                           <FileText size={13} className="text-text-muted" />
                           <span className="t-meta text-text-faint">
-                            {adm.registered ? 'Verified citizen record' : 'Emergency intake record'}
+                            {adm.registered ? 'Registered account' : 'Emergency intake record'}
                           </span>
                         </div>
                       </div>

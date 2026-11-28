@@ -60,8 +60,11 @@ def test_units_come_from_the_directory_parked_at_their_stations():
 def test_assignment_prefers_the_planned_station_then_the_nearest_free_unit():
     first = fleet.assign("INC-1", "Ambulance", HEBBAL, prefer_station="Manipal Ambulance Base Depot")
     assert first["unit_id"] == "AMB-02"
+    free = [u for u in fleet.units() if u["type"] == "Ambulance" and u["status"] == "available"
+            and u.get("on_duty", True)]
+    nearest = min(free, key=lambda u: fleet._haversine(u["position"], HEBBAL))
     second = fleet.assign("INC-2", "Ambulance", HEBBAL)
-    assert second["unit_id"] == "AMB-01"  # nearest free ambulance to Hebbal
+    assert second["unit_id"] == nearest["unit_id"]  # nearest free ambulance to Hebbal
     assert fleet.assign("INC-1", "Ambulance", HEBBAL)["unit_id"] == "AMB-02"  # idempotent
     fleet.release("INC-1")
     assert fleet.get("AMB-02")["status"] == "available"
@@ -145,9 +148,9 @@ def test_track_shows_the_unit_and_plan_without_crew_details():
         "citizen_view": {"phase1_route_coordinates": [HEBBAL], "route_coordinates": []},
     })
     try:
-        fleet.assign("INC-track", "Ambulance", HEBBAL)
+        assigned = fleet.assign("INC-track", "Ambulance", HEBBAL)
         body = TestClient(app).get("/api/incidents/INC-track/track").json()
-        assert body["unit"]["unit_id"] == "AMB-01"
+        assert body["unit"]["unit_id"] == assigned["unit_id"]
         assert body["planned"]["to_scene"] == [HEBBAL]
         assert "crew" not in body["unit"] and "phone" not in json.dumps(body)
         assert TestClient(app).get("/api/incidents/INC-missing/track").status_code == 404
