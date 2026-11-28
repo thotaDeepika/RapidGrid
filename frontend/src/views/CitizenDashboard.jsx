@@ -635,9 +635,10 @@ export default function CitizenDashboard() {
   const dispatched = ['dispatched', 'claimed', 'patient_picked_up', 'arrived', 'completed'].includes(
     incident?.status,
   );
-  // From the server's private directory, by role: a signed-in caller gets
-  // their unit and dispatch; everyone gets 112.
-  const unitPhone = callContacts?.unit?.phone ?? null;
+  // Default fallback contact numbers:
+  // Ambulance: 8247042357, Hospital: 7032125015
+  const unitPhone = callContacts?.unit?.phone ?? '8247042357';
+  const hospitalPhone = callContacts?.hospital?.emergency_phone ?? callContacts?.hospital?.icu_phone ?? '7032125015';
   const dispatchPhone = callContacts?.dispatch?.phone ?? null;
   // Before the directory answers, 112 works anywhere in India; if the
   // directory says there is no hotline (null), no button is shown.
@@ -667,8 +668,9 @@ export default function CitizenDashboard() {
             </p>
           )}
           <div className="mt-3 flex flex-wrap gap-2">
-            <CallButton phone={unitPhone} label="Call unit" variant="primary" />
-            <CallButton phone={dispatchPhone} label="Call dispatch" />
+            <CallButton phone={unitPhone} label={`Call ambulance (${unitPhone})`} variant="primary" />
+            <CallButton phone={hospitalPhone} label={`Call hospital (${hospitalPhone})`} />
+            {dispatchPhone && <CallButton phone={dispatchPhone} label="Call dispatch" />}
             <CallButton phone={hotline} label={callContacts?.hotline_112?.phone ? `Call ${callContacts.hotline_112.name}` : 'Call 112'} />
           </div>
         </div>
