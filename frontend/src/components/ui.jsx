@@ -79,7 +79,10 @@ export function Stat({ label, value, unit, tone = 'default', sub, ink = false, m
         {unit && <span className="ml-1 text-[13px] font-medium opacity-60">{unit}</span>}
       </div>
       {sub && (
-        <div className={`mt-1.5 t-micro ${ink ? 'text-on-ink-muted' : 'text-text-faint'}`}>
+        <div
+          title={typeof sub === 'string' ? sub : undefined}
+          className={`mt-1.5 line-clamp-1 t-micro ${ink ? 'text-on-ink-muted' : 'text-text-faint'}`}
+        >
           {sub}
         </div>
       )}

@@ -402,7 +402,7 @@ export default function DispatcherDashboard() {
           // On desktop the map column stays in view at screen height while the
           // long rationale column scrolls, so routes and alerts stay visible.
           <div className="flex min-w-0 min-h-[520px] flex-col gap-3 xl:sticky xl:top-3 xl:z-0 xl:h-[calc(100vh-1.5rem)] xl:self-start xl:overflow-hidden">
-            <Panel className="relative z-0 flex shrink-0 flex-col overflow-hidden">
+            <Panel className="relative z-0 flex min-h-0 flex-1 flex-col overflow-hidden">
               <PanelHead
                 label="Tactical map"
                 right={
@@ -433,7 +433,7 @@ export default function DispatcherDashboard() {
                   </div>
                 }
               />
-              <div className="relative z-0 h-[min(70vh,640px)] w-full overflow-hidden">
+              <div className="relative z-0 h-[min(50vh,420px)] min-h-[160px] w-full flex-1 overflow-hidden xl:h-auto">
                 {routeCoords.length > 0 || view.phase1_route_coordinates?.length > 0 ? (
                   <MapOverlay
                     height="100%"
@@ -521,7 +521,7 @@ export default function DispatcherDashboard() {
             </Panel>
 
             {/* Actions */}
-            <Panel className="min-h-0 flex-1 overflow-y-auto p-3">
+            <Panel className="min-h-[8.75rem] shrink-0 overflow-y-auto p-3 xl:max-h-[46%]">
               <div className="mb-3">
                 <CallerDetails key={selected.incident_id} incidentId={selected.incident_id} />
               </div>
