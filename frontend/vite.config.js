@@ -96,6 +96,7 @@ export default defineConfig({
     exclude: ['@huggingface/transformers'],
   },
   server: {
+    host: true,
     proxy: {
       '/api': { target: apiTarget, changeOrigin: false },
       '/health': { target: apiTarget, changeOrigin: false },
